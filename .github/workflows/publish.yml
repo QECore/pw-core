@@ -13,6 +13,22 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
       
+      - name: Check token exists
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "TOKEN MISSING"
+            exit 1
+          else
+            echo "TOKEN FOUND"
+          fi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Verify npm auth
+        run: npm whoami
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
