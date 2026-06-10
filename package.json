@@ -1,0 +1,61 @@
+{
+  "name": "pw-core",
+  "version": "0.0.1",
+  "description": "Developer-first Playwright framework with typed page objects, components, assertions, and reusable automation utilities.",
+  "author": {
+    "name": "Shanmuka Chandra Teja Anem",
+    "url": "https://github.com/shanmukaanem"
+  },
+  "license": "MIT",
+  "keywords": [
+    "playwright",
+    "automation",
+    "testing",
+    "e2e",
+    "qa",
+    "sdet",
+    "page-object",
+    "framework",
+    "typescript"
+  ],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./page": {
+      "types": "./dist/page/index.d.ts",
+      "default": "./dist/page/index.js"
+    },
+    "./component/table": {
+      "types": "./dist/component/table.d.ts",
+      "default": "./dist/component/table.js"
+    },
+    "./helpers": {
+      "types": "./dist/helpers.d.ts",
+      "default": "./dist/helpers.js"
+    }
+  },
+  "scripts": {
+    "build": "rimraf dist && tsc",
+    "prepare": "npm run build"
+  },
+  "peerDependencies": {
+    "@playwright/test": "^1.40.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.60.0",
+    "rimraf": "^6.0.1",
+    "typescript": "^5.3.3"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
