@@ -52,6 +52,26 @@ export type PageConfig<T = any> = {
   Class?: new (page: Page, config?: any) => any;
 };
 
+/**
+ * Creates a strongly-typed page configuration object containing URLs, testIds, and CSS selectors.
+ *
+ * @example
+ * ```ts
+ * import { createPageConfig } from 'pw-core/page';
+ *
+ * const config = createPageConfig({
+ *   url: '/login',
+ *   testIds: {
+ *     username: 'username-input',
+ *     password: 'password-input',
+ *     submitBtn: 'login-button',
+ *   },
+ *   selectors: {
+ *     errorAlert: '.alert-danger',
+ *   }
+ * });
+ * ```
+ */
 export function createPageConfig<
   T extends PageConfig<T>
 >(config: T): T {

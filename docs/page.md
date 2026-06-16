@@ -28,11 +28,11 @@ export class LoginPage extends TypedPage<typeof config> {
 | Property access | `page.submit` → raw Playwright `Locator` |
 | Key-first proxy | `page.click('submit')` → wrapped in a test step |
 | Chained keys | `page.click('dialog.confirm')` |
-| Filtered locator | `page.locator('row', { hasText: 'Alice' })` |
+| Filtered locator | `page.locator('row', { hasText: 'Alice', nth: 1 })` |
 
 Proxy methods delegate to Playwright. See [Locator API](https://playwright.dev/docs/api/class-locator) for options.
 
-pw-core adds `nth` on proxy options to target a specific match.
+pw-core adds `nth` and `hasText` on proxy options to target and filter specific matches.
 
 ## pw-core-only methods
 
@@ -44,28 +44,36 @@ pw-core adds `nth` on proxy options to target a specific match.
 | `reload()` | Reload the page |
 | `waitForLoadState(state?)` | Wait for load state |
 | `waitForURL(pattern?)` | Wait for navigation (defaults to config `url`) |
-| `verify(key)` | Chainable assertions — `.toBeVisible()`, `.toHaveText()`, `.soft` |
-| `verifyHidden/Enabled/Disabled(key)` | Shortcut assertions |
+| `verify(key, options?)` | Chainable assertions — `.toBeVisible()`, `.toHaveText()`, `.soft` (supports `nth` and `hasText` options) |
+| `verifyHidden/Enabled/Disabled(key, options?)` | Shortcut assertions (supports `nth` and `hasText` options) |
 | `expect(key)` | Returns Playwright `expect(locator)` |
 
 ## Page registry
 
-Register pages as Playwright fixtures.
+Register pages as Playwright fixtures. `createPageRegistry` automatically returns the extended Playwright test runner, including standard page-scoped fixtures and worker-scoped fixtures prefixed with `worker`.
 
 ```ts
 import { createPageRegistry } from 'pw-core/page';
 import { LoginPage, config } from './login.page.js';
 
-const registry = createPageRegistry({
+// Returns the extended test runner directly
+export const test = createPageRegistry({
   login: { ...config, Class: LoginPage },
 });
 
-export const test = registry.extend({ login: LoginPage });
+// Access the registered page classes (optional)
+export const pages = test.pages;
 ```
 
 ```ts
-test('login flow', async ({ login }) => {
+// In your test files, use page-scoped or worker-scoped fixtures:
+test('login flow', async ({ login, workerLogin, page, workerPage }) => {
+  // Page-scoped test
   await login.goto();
   await login.login('alice', 'secret');
+
+  // Worker-scoped test (shares a single workerPage among other worker fixtures in the worker)
+  await workerLogin.goto();
+  await workerLogin.login('bob', 'secret');
 });
 ```

@@ -1,0 +1,33 @@
+{
+  "name": "create-pw-core",
+  "version": "1.0.2",
+  "description": "Initialize a pw-core test suite in a project",
+  "bin": {
+    "create-pw-core": "./dist/index.js"
+  },
+  "main": "./dist/index.js",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "rimraf dist && tsc && node scripts/copy-templates.js"
+  },
+  "keywords": [
+    "playwright",
+    "pw-core",
+    "create-pw-core",
+    "initializer"
+  ],
+  "author": {
+    "name": "Shanmuka Chandra Teja Anem",
+    "url": "https://github.com/shanmukaanem"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "rimraf": "^6.0.1",
+    "typescript": "^5.3.3"
+  }
+}

@@ -83,7 +83,7 @@ class TypedPageClass<T extends { testIds?: Record<string, string>; selectors?: R
     return waitForURL(this.page, this.url, this.constructor.name, urlOrOptions, options);
   }
 
-  resolveLocator(target: PageKeys<T> | ChainedKeys<T> | Locator, options?: { nth?: number; raw?: boolean }): Locator {
+  resolveLocator(target: PageKeys<T> | ChainedKeys<T> | Locator, options?: { nth?: number; raw?: boolean; hasText?: string | RegExp }): Locator {
     return resolveLocator(this.context, this.config, target as any, options);
   }
 

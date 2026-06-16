@@ -2,20 +2,20 @@ import { Locator, expect as playwrightExpect, test } from '@playwright/test';
 import { ChainedKeys, PageKeys } from '../config';
 import { formatAssertionDescription } from '../utils/formatter';
 
-export type VerifyOptions = { timeout?: number; nth?: number; message?: string };
+export type VerifyOptions = { timeout?: number; nth?: number; hasText?: string | RegExp; message?: string };
 
 type PlaywrightLocatorMatchers = ReturnType<typeof playwrightExpect<Locator>>;
 
 type ModifyMatcherArgs<Args extends any[]> =
   Args extends []
-    ? [options?: { nth?: number; message?: string }]
+    ? [options?: { nth?: number; hasText?: string | RegExp; message?: string }]
     : Args extends [any, any?]
-      ? [Args[0], (Exclude<Args[1], undefined> & { nth?: number; message?: string })?]
+      ? [Args[0], (Exclude<Args[1], undefined> & { nth?: number; hasText?: string | RegExp; message?: string })?]
       : Args extends [any?]
         ? Exclude<Args[0], undefined> extends object
-          ? [(Exclude<Args[0], undefined> & { nth?: number; message?: string })?]
-          : [Exclude<Args[0], undefined>, options?: { nth?: number; message?: string }]
-        : [options?: { nth?: number; message?: string }];
+          ? [(Exclude<Args[0], undefined> & { nth?: number; hasText?: string | RegExp; message?: string })?]
+          : [Exclude<Args[0], undefined>, options?: { nth?: number; hasText?: string | RegExp; message?: string }]
+        : [options?: { nth?: number; hasText?: string | RegExp; message?: string }];
 
 type DynamicallyModifiedMatchers<T> = {
   [K in keyof PlaywrightLocatorMatchers]: K extends 'not'
@@ -26,36 +26,38 @@ type DynamicallyModifiedMatchers<T> = {
 };
 
 export type VerifyMatchers<T> = DynamicallyModifiedMatchers<T> & PromiseLike<void> & {
-  (options?: Parameters<PlaywrightLocatorMatchers['toBeVisible']>[0] & { nth?: number; message?: string }): Promise<void>;
+  (options?: Parameters<PlaywrightLocatorMatchers['toBeVisible']>[0] & { nth?: number; hasText?: string | RegExp; message?: string }): Promise<void>;
 };
 
 export type VerifyFn<T> = (target: PageKeys<T> | ChainedKeys<T> | Locator, options?: VerifyOptions) => VerifyMatchers<T>;
 
 export type AssertionsMethod<T> = {
   verify: VerifyFn<T> & { soft: VerifyFn<T> };
-  verifyHidden(target: PageKeys<T> | ChainedKeys<T> | Locator, options?: Parameters<ReturnType<typeof playwrightExpect<Locator>>['toBeHidden']>[0] & { nth?: number; message?: string }): Promise<void>;
-  verifyEnabled(target: PageKeys<T> | ChainedKeys<T> | Locator, options?: Parameters<ReturnType<typeof playwrightExpect<Locator>>['toBeEnabled']>[0] & { nth?: number; message?: string }): Promise<void>;
-  verifyDisabled(target: PageKeys<T> | ChainedKeys<T> | Locator, options?: Parameters<ReturnType<typeof playwrightExpect<Locator>>['toBeDisabled']>[0] & { nth?: number; message?: string }): Promise<void>;
+  verifyHidden(target: PageKeys<T> | ChainedKeys<T> | Locator, options?: Parameters<ReturnType<typeof playwrightExpect<Locator>>['toBeHidden']>[0] & { nth?: number; hasText?: string | RegExp; message?: string }): Promise<void>;
+  verifyEnabled(target: PageKeys<T> | ChainedKeys<T> | Locator, options?: Parameters<ReturnType<typeof playwrightExpect<Locator>>['toBeEnabled']>[0] & { nth?: number; hasText?: string | RegExp; message?: string }): Promise<void>;
+  verifyDisabled(target: PageKeys<T> | ChainedKeys<T> | Locator, options?: Parameters<ReturnType<typeof playwrightExpect<Locator>>['toBeDisabled']>[0] & { nth?: number; hasText?: string | RegExp; message?: string }): Promise<void>;
   expect(target: PageKeys<T> | ChainedKeys<T> | Locator, message?: string): ReturnType<typeof playwrightExpect<Locator>>;
   locator(target: PageKeys<T> | ChainedKeys<T> | Locator, options?: Parameters<Locator['filter']>[0] & { nth?: number }): Locator;
 };
 
 export function createVerifyChain<T extends { testIds?: Record<string, string>; selectors?: Record<string, string> }>(
-  resolveLocator: (target: any, options?: { nth?: number; raw?: boolean }) => Locator,
+  resolveLocator: (target: any, options?: { nth?: number; hasText?: string | RegExp; raw?: boolean }) => Locator,
   target: PageKeys<T> | ChainedKeys<T> | Locator,
   verifyOptions: VerifyOptions | undefined,
   isSoft: boolean
 ): VerifyMatchers<T> {
   const defaultNth = verifyOptions?.nth;
+  const defaultHasText = verifyOptions?.hasText;
   const defaultMessage = verifyOptions?.message;
   const expectFn = isSoft ? playwrightExpect.soft : playwrightExpect;
 
   const createMatcher = (isNegated: boolean): any => {
     const baseFn = async (options?: any) => {
       const nth = options?.nth !== undefined ? options.nth : defaultNth;
+      const hasText = options?.hasText !== undefined ? options.hasText : defaultHasText;
       const stepName = options?.message ?? defaultMessage ?? formatAssertionDescription(target, 'toBeVisible', isNegated, [options]);
       await test.step(stepName, async () => {
-        const locator = resolveLocator(target, { nth });
+        const locator = resolveLocator(target, { nth, hasText });
         const expectation = expectFn(locator, stepName);
         const match = isNegated ? expectation.not : expectation;
         await match.toBeVisible(options);
@@ -87,11 +89,12 @@ export function createVerifyChain<T extends { testIds?: Record<string, string>; 
           const valueArgs = lastIsOptions ? args.slice(0, args.length - 1) : args;
           const options = lastIsOptions ? lastArg : undefined;
           const nth = (options && 'nth' in options) ? options.nth : defaultNth;
+          const hasText = (options && 'hasText' in options) ? options.hasText : defaultHasText;
           const isHaveCount = prop === 'toHaveCount';
 
           const stepName = options?.message ?? defaultMessage ?? formatAssertionDescription(target, String(prop), isNegated, valueArgs);
           await test.step(stepName, async () => {
-            const locator = resolveLocator(target, { nth, raw: isHaveCount });
+            const locator = resolveLocator(target, { nth, hasText, raw: isHaveCount });
             const expectation = expectFn(locator, stepName);
             const match = isNegated ? expectation.not : expectation;
             await (match as any)[prop](...args);
