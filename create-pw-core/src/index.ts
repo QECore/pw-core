@@ -43,6 +43,14 @@ function copyRecursiveSync(src: string, dest: string) {
       );
     });
   } else {
+    const ext = path.extname(src);
+    const filename = path.basename(src);
+    if (filename === 'package.json' || filename === 'package-lock.json') {
+      return;
+    }
+    if (ext === '.js' || ext === '.map') {
+      return;
+    }
     fs.mkdirSync(path.dirname(dest), { recursive: true });
     fs.copyFileSync(src, dest);
   }
@@ -84,15 +92,75 @@ async function main() {
 
   // 3. Copy templates from create-pw-core package to target directory
   console.log('\nCopying template files...');
-  const templatesDir = path.join(__dirname, 'templates');
+  let templatesDir = path.join(__dirname, 'templates');
   
-  if (!fs.existsSync(templatesDir)) {
-    console.error(`\x1b[31mError: Templates directory not found at ${templatesDir}\x1b[0m`);
-    rl.close();
-    process.exit(1);
+  // If we are in dev repo, read templates directly from examples/ to get the latest files immediately
+  const devRepoPath = path.resolve(__dirname, '../..');
+  const devRepoPkgPath = path.join(devRepoPath, 'package.json');
+  let isDevRepo = false;
+  if (fs.existsSync(devRepoPkgPath)) {
+    try {
+      const devRepoPkg = JSON.parse(fs.readFileSync(devRepoPkgPath, 'utf8'));
+      if (devRepoPkg.name === 'pw-core') {
+        isDevRepo = true;
+      }
+    } catch (e) {}
   }
 
-  copyRecursiveSync(templatesDir, targetDir);
+  // Look for local pw-core/examples on the user's machine
+  let localExamplesDir: string | null = null;
+  if (!isDevRepo) {
+    let current = targetDir;
+    while (true) {
+      const candidate = path.join(current, 'pw-core', 'examples');
+      if (fs.existsSync(candidate) && fs.statSync(candidate).isDirectory()) {
+        localExamplesDir = candidate;
+        break;
+      }
+      const siblingCandidate = path.join(current, '..', 'pw-core', 'examples');
+      if (fs.existsSync(siblingCandidate) && fs.statSync(siblingCandidate).isDirectory()) {
+        localExamplesDir = siblingCandidate;
+        break;
+      }
+      const parent = path.dirname(current);
+      if (parent === current) {
+        break;
+      }
+      current = parent;
+    }
+
+    if (!localExamplesDir) {
+      const hardcodedPaths = [
+        'z:/QECore/pw-core/examples',
+        'Z:/QECore/pw-core/examples'
+      ];
+      for (const p of hardcodedPaths) {
+        if (fs.existsSync(p) && fs.statSync(p).isDirectory()) {
+          localExamplesDir = p;
+          break;
+        }
+      }
+    }
+  }
+
+  if (isDevRepo || localExamplesDir) {
+    const srcDir = isDevRepo ? path.join(devRepoPath, 'examples') : localExamplesDir!;
+    console.log(`\x1b[33mLocal pw-core repository found. Copying templates directly from: ${srcDir}\x1b[0m`);
+    // Copy pages -> src/pages
+    copyRecursiveSync(path.join(srcDir, 'pages'), path.join(targetDir, 'src/pages'));
+    // Copy tests -> src/tests
+    copyRecursiveSync(path.join(srcDir, 'tests'), path.join(targetDir, 'src/tests'));
+    // Copy config files
+    copyRecursiveSync(path.join(srcDir, 'playwright.config.ts'), path.join(targetDir, 'playwright.config.ts'));
+    copyRecursiveSync(path.join(srcDir, 'tsconfig.json'), path.join(targetDir, 'tsconfig.json'));
+  } else {
+    if (!fs.existsSync(templatesDir)) {
+      console.error(`\x1b[31mError: Templates directory not found at ${templatesDir}\x1b[0m`);
+      rl.close();
+      process.exit(1);
+    }
+    copyRecursiveSync(templatesDir, targetDir);
+  }
   console.log('\x1b[32mSuccessfully copied template files.\x1b[0m');
 
   // 4. Update target package.json with dependencies and scripts
