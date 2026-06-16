@@ -47,7 +47,13 @@ jobs:
       - name: Build package
         run: npm run build
 
-      - name: Publish to npm
+      - name: Publish pw-core to npm
         run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish create-pw-core to npm
+        run: npm publish --access public
+        working-directory: create-pw-core
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
