@@ -1,6 +1,6 @@
 {
   "name": "pw-core",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "description": "Developer-first Playwright framework with typed page objects, components, assertions, and reusable automation utilities.",
   "author": {
     "name": "Shanmuka Chandra Teja Anem",
@@ -44,16 +44,19 @@
     }
   },
   "scripts": {
-    "build": "rimraf dist && tsc",
-    "prepare": "npm run build"
+    "build": "rimraf dist && tsc && npm run build --prefix create-pw-core",
+    "prepare": "npm run build",
+    "test": "playwright test"
   },
   "peerDependencies": {
     "@playwright/test": "^1.40.0"
   },
   "devDependencies": {
-    "@playwright/test": "^1.60.0",
+    "@playwright/test": "^1.61.0",
+    "@types/node": "^20.11.0",
     "rimraf": "^6.0.1",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "pw-core": "^0.0.1"
   },
   "publishConfig": {
     "access": "public"

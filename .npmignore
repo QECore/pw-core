@@ -1,16 +1,7 @@
-# Testing
-tests/
-*.spec.ts
-*.test.ts
-
-# Development
-src/
-tsconfig.json
-.github/
-docs/
-
-# Build
-*.tsbuildinfo
-
-# Node modules
 node_modules/
+demo/
+examples/
+create-pw-core/
+.git/
+.npmignore
+tsconfig.json

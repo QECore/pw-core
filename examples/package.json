@@ -1,0 +1,20 @@
+{
+  "name": "pw-core-demo",
+  "version": "1.0.0",
+  "description": "Demo and example test suite showcasing the usage of pw-core in Playwright.",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:headless": "playwright test",
+    "test:report": "playwright show-report"
+  },
+  "author": {
+    "name": "Shanmuka Chandra Teja Anem",
+    "url": "https://github.com/shanmukaanem"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@playwright/test": "^1.61.0",
+    "typescript": "^6.0.3"
+  }
+}

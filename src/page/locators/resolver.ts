@@ -35,7 +35,7 @@ export function resolveLocator<T extends { testIds?: Record<string, string>; sel
   context: Page | Locator,
   config: T,
   target: PageKeys<T> | ChainedKeys<T> | Locator,
-  options?: { nth?: number; raw?: boolean }
+  options?: { nth?: number; raw?: boolean; hasText?: string | RegExp }
 ): Locator {
   if (typeof target !== 'string') return target as Locator;
   const targetStr = target as string;
@@ -56,13 +56,18 @@ export function resolveLocator<T extends { testIds?: Record<string, string>; sel
     loc = resolveSingle(parts[i], loc);
   }
 
+  let resolved = loc;
+  if (options?.hasText !== undefined) {
+    resolved = resolved.filter({ hasText: options.hasText });
+  }
+
   if (options?.raw) {
-    return loc;
+    return resolved;
   }
   if (options?.nth !== undefined) {
-    return loc.nth(options.nth);
+    return resolved.nth(options.nth);
   }
-  return loc.first();
+  return resolved.first();
 }
 
 /**
