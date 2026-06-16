@@ -1,6 +1,6 @@
 {
   "name": "pw-core",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Developer-first Playwright framework with typed page objects, components, assertions, and reusable automation utilities.",
   "author": {
     "name": "Shanmuka Chandra Teja Anem",
