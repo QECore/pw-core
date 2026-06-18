@@ -1,0 +1,64 @@
+name: Publish pw-core
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Version bump type'
+        required: true
+        default: 'none'
+        type: choice
+        options:
+          - none
+          - patch
+          - minor
+          - major
+  workflow_call:
+    inputs:
+      bump:
+        description: 'Version bump type'
+        required: true
+        type: string
+    secrets:
+      NPM_TOKEN:
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup and Build
+        uses: ./.github/actions/setup-and-build
+        with:
+          npm_token: ${{ secrets.NPM_TOKEN }}
+
+      - name: Configure Git
+        if: ${{ inputs.bump != 'none' }}
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump version
+        if: ${{ inputs.bump != 'none' }}
+        run: |
+          npm version ${{ inputs.bump }} -m "chore(release): bump pw-core version to %s [skip ci]"
+
+      - name: Push changes
+        if: ${{ inputs.bump != 'none' }}
+        run: |
+          git pull --rebase origin ${{ github.ref_name }}
+          git push origin HEAD:${{ github.ref_name }} --tags
+
+      - name: Publish pw-core to npm
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
