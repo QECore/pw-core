@@ -1,59 +1,45 @@
 name: Publish to npm
 
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:
+    inputs:
+      pw_core_bump:
+        description: 'pw-core version bump (select skip to disable publishing)'
+        required: true
+        default: 'none'
+        type: choice
+        options:
+          - skip
+          - none
+          - patch
+          - minor
+          - major
+      create_pw_core_bump:
+        description: 'create-pw-core version bump (select skip to disable publishing)'
+        required: true
+        default: 'none'
+        type: choice
+        options:
+          - skip
+          - none
+          - patch
+          - minor
+          - major
 
 jobs:
-  publish:
-    runs-on: ubuntu-latest
+  publish-pw-core:
+    if: ${{ github.event.inputs.pw_core_bump != 'skip' }}
+    uses: ./.github/workflows/publish-pw-core.yml
+    with:
+      bump: ${{ github.event.inputs.pw_core_bump }}
+    secrets:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          registry-url: https://registry.npmjs.org
-
-      - name: Check token exists
-        run: |
-          if [ -z "$NODE_AUTH_TOKEN" ]; then
-            echo "TOKEN MISSING"
-            exit 1
-          else
-            echo "TOKEN FOUND"
-          fi
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Configure npm auth
-        run: |
-          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > ~/.npmrc
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Verify npm auth
-        run: npm whoami
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build package
-        run: npm run build
-
-      - name: Publish pw-core to npm
-        run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Publish create-pw-core to npm
-        run: npm publish --access public
-        working-directory: create-pw-core
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+  publish-create-pw-core:
+    if: ${{ !cancelled() && !failure() && github.event.inputs.create_pw_core_bump != 'skip' }}
+    needs: publish-pw-core
+    uses: ./.github/workflows/publish-create-pw-core.yml
+    with:
+      bump: ${{ github.event.inputs.create_pw_core_bump }}
+    secrets:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
