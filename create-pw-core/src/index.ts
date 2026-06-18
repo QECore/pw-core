@@ -226,6 +226,23 @@ async function main() {
     if (isDevRepo) {
       pwCoreInstallSource = `file:${devRepoPath}`;
       console.log(`\n\x1b[33mDev repository detected. Installing pw-core from local path: ${devRepoPath}\x1b[0m`);
+    } else {
+      if (pwCoreInstallSource.startsWith('file:')) {
+        let resolvedRootPkgPath = '';
+        if (localExamplesDir) {
+          resolvedRootPkgPath = path.join(localExamplesDir, '..', 'package.json');
+        }
+        if (fs.existsSync(resolvedRootPkgPath)) {
+          try {
+            const rootPkg = JSON.parse(fs.readFileSync(resolvedRootPkgPath, 'utf8'));
+            pwCoreInstallSource = `^${rootPkg.version}`;
+          } catch (e) {
+            pwCoreInstallSource = '^1.1.1';
+          }
+        } else {
+          pwCoreInstallSource = '^1.1.1';
+        }
+      }
     }
   }
   
