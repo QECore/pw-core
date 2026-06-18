@@ -50,17 +50,21 @@ jobs:
       - name: Bump version
         if: ${{ inputs.bump != 'none' }}
         run: |
-          npm version ${{ inputs.bump }} -m "chore(release): bump pw-core version to %s [skip ci]"
+          npm version ${{ inputs.bump }} --no-git-tag-version
 
       - name: Push changes
         if: ${{ inputs.bump != 'none' }}
         run: |
-          git reset --hard HEAD
+          git add .
+          git commit -m "chore(release): bump pw-core version [skip ci]"
+          NEW_VERSION=$(node -p "require('./package.json').version")
+          git tag "pw-core-v$NEW_VERSION"
           git pull --rebase origin ${{ github.ref_name }}
           git push origin HEAD:${{ github.ref_name }} --tags
-
 
       - name: Publish pw-core to npm
         run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+
