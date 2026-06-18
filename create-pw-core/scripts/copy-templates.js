@@ -17,9 +17,11 @@ function copyRecursiveSync(src, dest) {
     name === 'playwright-report' ||
     name === 'test-results' ||
     name === 'package-lock.json' ||
+    name === '.env.example' ||
     name === '.git') {
     return;
   }
+
 
   if (isDirectory) {
     fs.mkdirSync(dest, { recursive: true });

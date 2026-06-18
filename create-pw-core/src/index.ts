@@ -40,9 +40,11 @@ function copyRecursiveSync(src: string, dest: string) {
       name === 'playwright-report' || 
       name === 'test-results' || 
       name === 'package-lock.json' || 
+      name === '.env.example' ||
       name === '.git') {
     return;
   }
+
 
   if (isDirectory) {
     if (!fs.existsSync(dest)) {
