@@ -64,8 +64,14 @@ function copyRecursiveSync(src: string, dest: string) {
     if (ext === '.js' || ext === '.map') {
       return;
     }
-    fs.mkdirSync(path.dirname(dest), { recursive: true });
-    fs.copyFileSync(src, dest);
+    let finalDest = dest;
+    if (name === 'gitignore' || name === '.gitignore') {
+      finalDest = path.join(path.dirname(dest), '.gitignore');
+    } else if (name === 'env' || name === '.env') {
+      finalDest = path.join(path.dirname(dest), '.env');
+    }
+    fs.mkdirSync(path.dirname(finalDest), { recursive: true });
+    fs.copyFileSync(src, finalDest);
   }
 }
 

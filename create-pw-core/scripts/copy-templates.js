@@ -38,8 +38,15 @@ function copyRecursiveSync(src, dest) {
       return;
     }
 
-    fs.mkdirSync(path.dirname(dest), { recursive: true });
-    fs.copyFileSync(src, dest);
+    let finalDest = dest;
+    if (name === '.gitignore') {
+      finalDest = path.join(path.dirname(dest), 'gitignore');
+    } else if (name === '.env') {
+      finalDest = path.join(path.dirname(dest), 'env');
+    }
+
+    fs.mkdirSync(path.dirname(finalDest), { recursive: true });
+    fs.copyFileSync(src, finalDest);
   }
 }
 
@@ -51,5 +58,21 @@ fs.mkdirSync(destDir, { recursive: true });
 
 // Copy everything recursively
 copyRecursiveSync(srcDir, destDir);
+
+// Update dist/templates/package.json with correct pw-core version
+const templatePkgPath = path.join(destDir, 'package.json');
+if (fs.existsSync(templatePkgPath)) {
+  const rootPkgPath = path.join(__dirname, '../../package.json');
+  if (fs.existsSync(rootPkgPath)) {
+    const rootPkg = JSON.parse(fs.readFileSync(rootPkgPath, 'utf8'));
+    const pwCoreVersion = `^${rootPkg.version}`;
+    const templatePkg = JSON.parse(fs.readFileSync(templatePkgPath, 'utf8'));
+    if (templatePkg.devDependencies && templatePkg.devDependencies['pw-core']) {
+      templatePkg.devDependencies['pw-core'] = pwCoreVersion;
+      fs.writeFileSync(templatePkgPath, JSON.stringify(templatePkg, null, 2), 'utf8');
+      console.log(`Updated pw-core version in template package.json to: ${pwCoreVersion}`);
+    }
+  }
+}
 
 console.log('Templates successfully copied to dist/templates/');
