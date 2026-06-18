@@ -3,43 +3,28 @@ name: Publish to npm
 on:
   workflow_dispatch:
     inputs:
-      pw_core_bump:
-        description: 'pw-core version bump (select skip to disable publishing)'
+      publish_pw_core:
+        description: 'Publish pw-core to npm'
         required: true
-        default: 'none'
-        type: choice
-        options:
-          - skip
-          - none
-          - patch
-          - minor
-          - major
-      create_pw_core_bump:
-        description: 'create-pw-core version bump (select skip to disable publishing)'
+        type: boolean
+        default: true
+      publish_create_pw_core:
+        description: 'Publish create-pw-core to npm'
         required: true
-        default: 'none'
-        type: choice
-        options:
-          - skip
-          - none
-          - patch
-          - minor
-          - major
+        type: boolean
+        default: true
 
 jobs:
   publish-pw-core:
-    if: ${{ github.event.inputs.pw_core_bump != 'skip' }}
+    if: ${{ github.event.inputs.publish_pw_core == 'true' }}
     uses: ./.github/workflows/publish-pw-core.yml
-    with:
-      bump: ${{ github.event.inputs.pw_core_bump }}
     secrets:
       NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   publish-create-pw-core:
-    if: ${{ !cancelled() && !failure() && github.event.inputs.create_pw_core_bump != 'skip' }}
+    if: ${{ !cancelled() && !failure() && github.event.inputs.publish_create_pw_core == 'true' }}
     needs: publish-pw-core
     uses: ./.github/workflows/publish-create-pw-core.yml
-    with:
-      bump: ${{ github.event.inputs.create_pw_core_bump }}
     secrets:
       NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
