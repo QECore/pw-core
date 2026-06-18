@@ -55,8 +55,10 @@ jobs:
       - name: Push changes
         if: ${{ inputs.bump != 'none' }}
         run: |
+          git reset --hard HEAD
           git pull --rebase origin ${{ github.ref_name }}
           git push origin HEAD:${{ github.ref_name }} --tags
+
 
       - name: Publish pw-core to npm
         run: npm publish --access public
