@@ -1,0 +1,48 @@
+name: 'Setup and Build'
+description: 'Set up Node.js, configure npm auth, install dependencies, and build the packages'
+inputs:
+  npm_token:
+    description: 'NPM authentication token'
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20
+        registry-url: https://registry.npmjs.org
+
+    - name: Check token exists
+      shell: bash
+      run: |
+        if [ -z "$NODE_AUTH_TOKEN" ]; then
+          echo "TOKEN MISSING"
+          exit 1
+        else
+          echo "TOKEN FOUND"
+        fi
+      env:
+        NODE_AUTH_TOKEN: ${{ inputs.npm_token }}
+
+    - name: Configure npm auth
+      shell: bash
+      run: |
+        echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > ~/.npmrc
+      env:
+        NODE_AUTH_TOKEN: ${{ inputs.npm_token }}
+
+    - name: Verify npm auth
+      shell: bash
+      run: npm whoami
+      env:
+        NODE_AUTH_TOKEN: ${{ inputs.npm_token }}
+
+    - name: Install dependencies
+      shell: bash
+      run: npm ci
+
+    - name: Build package
+      shell: bash
+      run: npm run build
