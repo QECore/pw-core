@@ -61,6 +61,8 @@ jobs:
 
 
       - name: Publish pw-core to npm
+        if: ${{ inputs.bump != 'none' }}
         run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+

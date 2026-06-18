@@ -62,7 +62,9 @@ jobs:
 
 
       - name: Publish create-pw-core to npm
+        if: ${{ inputs.bump != 'none' }}
         run: npm publish --access public
         working-directory: create-pw-core
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
