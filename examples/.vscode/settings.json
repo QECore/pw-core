@@ -1,0 +1,9 @@
+{
+    "files.exclude": {
+        "node_modules": true,
+        "playwright-report": true,
+        "test-results": true,
+        "package-lock.json": true,
+        "yarn.lock": true
+    }
+}

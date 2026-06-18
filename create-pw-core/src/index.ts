@@ -82,7 +82,7 @@ async function main() {
   const targetDir = projectPathInput.trim()
     ? path.resolve(process.cwd(), projectPathInput.trim())
     : process.cwd();
-  
+
   if (!fs.existsSync(targetDir)) {
     fs.mkdirSync(targetDir, { recursive: true });
   }
@@ -97,7 +97,7 @@ async function main() {
       if (devRepoPkg.name === 'pw-core') {
         isDevRepo = true;
       }
-    } catch (e) {}
+    } catch (e) { }
   }
 
   // Look for local pw-core/examples on the user's machine
@@ -182,7 +182,7 @@ async function main() {
   // Update target package.json with dependencies and scripts
   console.log('\nUpdating package.json...');
   const targetPkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
-  
+
   // Merge description, author, license if target has empty or default ones
   if (!targetPkg.description || targetPkg.description === 'pw-core test suite') {
     targetPkg.description = templatePkg.description || "pw-core test suite";
@@ -213,7 +213,7 @@ async function main() {
       }
     }
   }
-  
+
   // Check if we are testing locally or installing published package
   let pwCoreInstallSource = templatePkg.devDependencies?.['pw-core'] || '^1.0.0';
   const envInstallLocal = process.env.PW_CORE_INSTALL_LOCAL;
@@ -225,7 +225,6 @@ async function main() {
     // Check if running in the development repository
     if (isDevRepo) {
       pwCoreInstallSource = `file:${devRepoPath}`;
-      console.log(`\n\x1b[33mDev repository detected. Installing pw-core from local path: ${devRepoPath}\x1b[0m`);
     } else {
       if (pwCoreInstallSource.startsWith('file:')) {
         let resolvedRootPkgPath = '';
@@ -245,7 +244,7 @@ async function main() {
       }
     }
   }
-  
+
   targetPkg.devDependencies['pw-core'] = pwCoreInstallSource;
 
   fs.writeFileSync(packageJsonPath, JSON.stringify(targetPkg, null, 2), 'utf8');

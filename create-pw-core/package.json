@@ -1,6 +1,6 @@
 {
   "name": "create-pw-core",
-  "version": "1.0.5",
+  "version": "0.0.1",
   "description": "Initialize a pw-core test suite in a project",
   "bin": {
     "create-pw-core": "./dist/index.js"
