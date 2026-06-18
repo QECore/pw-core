@@ -58,9 +58,10 @@ jobs:
           git add .
           git commit -m "chore(release): bump pw-core version [skip ci]"
           NEW_VERSION=$(node -p "require('./package.json').version")
-          git tag "pw-core-v$NEW_VERSION"
+          git tag -f "pw-core-v$NEW_VERSION"
           git pull --rebase origin ${{ github.ref_name }}
-          git push origin HEAD:${{ github.ref_name }} --tags
+          git push origin HEAD:${{ github.ref_name }} --tags -f
+
 
       - name: Publish pw-core to npm
         run: npm publish --access public
