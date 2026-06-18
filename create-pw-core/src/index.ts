@@ -32,6 +32,18 @@ function copyRecursiveSync(src: string, dest: string) {
   if (!exists) return;
   const stats = fs.statSync(src);
   const isDirectory = stats.isDirectory();
+  const name = path.basename(src);
+
+  // Exclude list
+  if (name === 'node_modules' || 
+      name === 'reports' || 
+      name === 'playwright-report' || 
+      name === 'test-results' || 
+      name === 'package-lock.json' || 
+      name === '.git') {
+    return;
+  }
+
   if (isDirectory) {
     if (!fs.existsSync(dest)) {
       fs.mkdirSync(dest, { recursive: true });
@@ -44,8 +56,7 @@ function copyRecursiveSync(src: string, dest: string) {
     });
   } else {
     const ext = path.extname(src);
-    const filename = path.basename(src);
-    if (filename === 'package.json' || filename === 'package-lock.json') {
+    if (name === 'package.json') {
       return;
     }
     if (ext === '.js' || ext === '.map') {
@@ -74,27 +85,7 @@ async function main() {
     }
   }
 
-  // 2. Ensure package.json exists in the target directory
-  const packageJsonPath = path.join(targetDir, 'package.json');
-  if (!fs.existsSync(packageJsonPath)) {
-    console.log('\nNo package.json found. Initializing a new package...');
-    fs.writeFileSync(packageJsonPath, JSON.stringify({
-      name: path.basename(targetDir),
-      version: "1.0.0",
-      description: "pw-core test suite",
-      main: "index.js",
-      scripts: {},
-      keywords: [],
-      author: "",
-      license: "ISC"
-    }, null, 2), 'utf8');
-  }
-
-  // 3. Copy templates from create-pw-core package to target directory
-  console.log('\nCopying template files...');
-  let templatesDir = path.join(__dirname, 'templates');
-  
-  // If we are in dev repo, read templates directly from examples/ to get the latest files immediately
+  // Detect paths and find templates
   const devRepoPath = path.resolve(__dirname, '../..');
   const devRepoPkgPath = path.join(devRepoPath, 'package.json');
   let isDevRepo = false;
@@ -143,16 +134,39 @@ async function main() {
     }
   }
 
+  let templatesDir = path.join(__dirname, 'templates');
+  let templatePkgPath = path.join(templatesDir, 'package.json');
+  if (isDevRepo || localExamplesDir) {
+    const srcDir = isDevRepo ? path.join(devRepoPath, 'examples') : localExamplesDir!;
+    templatePkgPath = path.join(srcDir, 'package.json');
+  }
+
+  let templatePkg: any = {};
+  if (fs.existsSync(templatePkgPath)) {
+    try {
+      templatePkg = JSON.parse(fs.readFileSync(templatePkgPath, 'utf8'));
+    } catch (e) {
+      console.warn(`Warning: Could not parse template package.json: ${e}`);
+    }
+  }
+
+  // 2. Ensure package.json exists in the target directory
+  const packageJsonPath = path.join(targetDir, 'package.json');
+  if (!fs.existsSync(packageJsonPath)) {
+    console.log('\nNo package.json found. Initializing a new package...');
+    const newPkg = {
+      ...templatePkg,
+      name: path.basename(targetDir)
+    };
+    fs.writeFileSync(packageJsonPath, JSON.stringify(newPkg, null, 2), 'utf8');
+  }
+
+  // 3. Copy templates from create-pw-core package to target directory
+  console.log('\nCopying template files...');
   if (isDevRepo || localExamplesDir) {
     const srcDir = isDevRepo ? path.join(devRepoPath, 'examples') : localExamplesDir!;
     console.log(`\x1b[33mLocal pw-core repository found. Copying templates directly from: ${srcDir}\x1b[0m`);
-    // Copy pages -> src/pages
-    copyRecursiveSync(path.join(srcDir, 'pages'), path.join(targetDir, 'src/pages'));
-    // Copy tests -> src/tests
-    copyRecursiveSync(path.join(srcDir, 'tests'), path.join(targetDir, 'src/tests'));
-    // Copy config files
-    copyRecursiveSync(path.join(srcDir, 'playwright.config.ts'), path.join(targetDir, 'playwright.config.ts'));
-    copyRecursiveSync(path.join(srcDir, 'tsconfig.json'), path.join(targetDir, 'tsconfig.json'));
+    copyRecursiveSync(srcDir, targetDir);
   } else {
     if (!fs.existsSync(templatesDir)) {
       console.error(`\x1b[31mError: Templates directory not found at ${templatesDir}\x1b[0m`);
@@ -167,13 +181,39 @@ async function main() {
   console.log('\nUpdating package.json...');
   const targetPkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
   
-  targetPkg.scripts = targetPkg.scripts || {};
-  targetPkg.scripts['test'] = 'playwright test';
+  // Merge description, author, license if target has empty or default ones
+  if (!targetPkg.description || targetPkg.description === 'pw-core test suite') {
+    targetPkg.description = templatePkg.description || "pw-core test suite";
+  }
+  if (!targetPkg.author && templatePkg.author) {
+    targetPkg.author = templatePkg.author;
+  }
+  if (!targetPkg.license || targetPkg.license === 'ISC') {
+    targetPkg.license = templatePkg.license || "ISC";
+  }
 
+  // Merge scripts from template
+  targetPkg.scripts = targetPkg.scripts || {};
+  if (templatePkg.scripts) {
+    for (const [key, val] of Object.entries(templatePkg.scripts)) {
+      targetPkg.scripts[key] = val;
+    }
+  } else {
+    targetPkg.scripts['test'] = 'playwright test';
+  }
+
+  // Merge devDependencies
   targetPkg.devDependencies = targetPkg.devDependencies || {};
+  if (templatePkg.devDependencies) {
+    for (const [key, val] of Object.entries(templatePkg.devDependencies)) {
+      if (key !== 'pw-core') {
+        targetPkg.devDependencies[key] = val;
+      }
+    }
+  }
   
   // Check if we are testing locally or installing published package
-  let pwCoreInstallSource = '^1.0.0';
+  let pwCoreInstallSource = templatePkg.devDependencies?.['pw-core'] || '^1.0.0';
   const envInstallLocal = process.env.PW_CORE_INSTALL_LOCAL;
 
   if (envInstallLocal) {
@@ -181,25 +221,13 @@ async function main() {
     pwCoreInstallSource = `file:${envInstallLocal}`;
   } else {
     // Check if running in the development repository
-    const devRepoPath = path.resolve(__dirname, '../..');
-    const devRepoPkgPath = path.join(devRepoPath, 'package.json');
-    if (fs.existsSync(devRepoPkgPath)) {
-      try {
-        const devRepoPkg = JSON.parse(fs.readFileSync(devRepoPkgPath, 'utf8'));
-        if (devRepoPkg.name === 'pw-core') {
-          pwCoreInstallSource = `file:${devRepoPath}`;
-          console.log(`\n\x1b[33mDev repository detected. Installing pw-core from local path: ${devRepoPath}\x1b[0m`);
-        }
-      } catch (e) {
-        // Ignore parsing errors
-      }
+    if (isDevRepo) {
+      pwCoreInstallSource = `file:${devRepoPath}`;
+      console.log(`\n\x1b[33mDev repository detected. Installing pw-core from local path: ${devRepoPath}\x1b[0m`);
     }
   }
   
   targetPkg.devDependencies['pw-core'] = pwCoreInstallSource;
-  
-  targetPkg.devDependencies['@playwright/test'] = '^1.61.0';
-  targetPkg.devDependencies['typescript'] = '^5.3.3';
 
   fs.writeFileSync(packageJsonPath, JSON.stringify(targetPkg, null, 2), 'utf8');
   console.log('\x1b[32mpackage.json updated.\x1b[0m');

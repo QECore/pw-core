@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 import { Table } from "pw-core/component/table";
-import { registry } from "./registry";
+import { registry } from "@pages/registry";
 
 type TableType = { title: string }
 

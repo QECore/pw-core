@@ -15,14 +15,14 @@ export const registry = createPageRegistry({
     },
   },
   projectsPage: {
-  url: '/app/projects',
-  testIds: {
-    newProject: 'new-project-button',
-    formTitle: 'form-title',
-    formDescription: 'form-description',
-    formSave: 'form-save',
-    table: 'projects-table',
-  },
+    url: '/app/projects',
+    testIds: {
+      newProject: 'new-project-button',
+      formTitle: 'form-title',
+      formDescription: 'form-description',
+      formSave: 'form-save',
+      table: 'projects-table',
+    },
   },
   tasksPage: {
     url: '/app/tasks',
