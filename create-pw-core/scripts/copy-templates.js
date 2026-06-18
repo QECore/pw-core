@@ -6,8 +6,23 @@ const destDir = path.join(__dirname, '../dist/templates');
 
 function copyRecursiveSync(src, dest) {
   const exists = fs.existsSync(src);
-  const stats = exists && fs.statSync(src);
-  const isDirectory = exists && stats.isDirectory();
+  if (!exists) return;
+  const stats = fs.statSync(src);
+  const isDirectory = stats.isDirectory();
+  const name = path.basename(src);
+
+  // Exclude list
+  if (name === 'node_modules' ||
+    name === 'reports' ||
+    name === 'playwright-report' ||
+    name === 'test-results' ||
+    name === 'package-lock.json' ||
+    name === '.env.example' ||
+    name === '.git') {
+    return;
+  }
+
+
   if (isDirectory) {
     fs.mkdirSync(dest, { recursive: true });
     fs.readdirSync(src).forEach((childItemName) => {
@@ -19,24 +34,12 @@ function copyRecursiveSync(src, dest) {
   } else {
     // If it's a file, copy it.
     const ext = path.extname(src);
-    const filename = path.basename(src);
-    if (filename === 'package.json' || filename === 'package-lock.json') {
-      return;
-    }
     if (ext === '.js' || ext === '.map') {
       return;
     }
 
     fs.mkdirSync(path.dirname(dest), { recursive: true });
-    
-    if (filename === 'playwright.config.ts') {
-      let content = fs.readFileSync(src, 'utf8');
-      // Update testDir: './tests' to testDir: './src/tests'
-      content = content.replace("testDir: './tests'", "testDir: './src/tests'");
-      fs.writeFileSync(dest, content, 'utf8');
-    } else {
-      fs.copyFileSync(src, dest);
-    }
+    fs.copyFileSync(src, dest);
   }
 }
 
@@ -46,14 +49,7 @@ if (fs.existsSync(destDir)) {
 }
 fs.mkdirSync(destDir, { recursive: true });
 
-// Copy pages to templates/src/pages
-copyRecursiveSync(path.join(srcDir, 'pages'), path.join(destDir, 'src/pages'));
-
-// Copy tests to templates/src/tests
-copyRecursiveSync(path.join(srcDir, 'tests'), path.join(destDir, 'src/tests'));
-
-// Copy config files
-copyRecursiveSync(path.join(srcDir, 'playwright.config.ts'), path.join(destDir, 'playwright.config.ts'));
-copyRecursiveSync(path.join(srcDir, 'tsconfig.json'), path.join(destDir, 'tsconfig.json'));
+// Copy everything recursively
+copyRecursiveSync(srcDir, destDir);
 
 console.log('Templates successfully copied to dist/templates/');

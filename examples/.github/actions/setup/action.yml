@@ -1,0 +1,19 @@
+name: 'Setup Environment'
+description: 'Sets up Node.js, installs dependencies, and installs Playwright browsers'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: lts/*
+        cache: 'npm'
+
+    - name: Install dependencies
+      shell: bash
+      run: npm ci
+
+    - name: Install Playwright Browsers
+      shell: bash
+      run: npx playwright install --with-deps
