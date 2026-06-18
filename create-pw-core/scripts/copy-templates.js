@@ -4,6 +4,16 @@ const path = require('path');
 const srcDir = path.join(__dirname, '../../examples');
 const destDir = path.join(__dirname, '../dist/templates');
 
+const ignoreList = [
+  'node_modules',
+  'reports',
+  'playwright-report',
+  'test-results',
+  'package-lock.json',
+  '.env.example',
+  '.git'
+];
+
 function copyRecursiveSync(src, dest) {
   const exists = fs.existsSync(src);
   if (!exists) return;
@@ -11,17 +21,9 @@ function copyRecursiveSync(src, dest) {
   const isDirectory = stats.isDirectory();
   const name = path.basename(src);
 
-  // Exclude list
-  if (name === 'node_modules' ||
-    name === 'reports' ||
-    name === 'playwright-report' ||
-    name === 'test-results' ||
-    name === 'package-lock.json' ||
-    name === '.env.example' ||
-    name === '.git') {
+  if (ignoreList.includes(name)) {
     return;
   }
-
 
   if (isDirectory) {
     fs.mkdirSync(dest, { recursive: true });
@@ -32,12 +34,6 @@ function copyRecursiveSync(src, dest) {
       );
     });
   } else {
-    // If it's a file, copy it.
-    const ext = path.extname(src);
-    if (ext === '.js' || ext === '.map') {
-      return;
-    }
-
     let finalDest = dest;
     if (name === '.gitignore') {
       finalDest = path.join(path.dirname(dest), 'gitignore');

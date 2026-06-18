@@ -27,6 +27,16 @@ async function runCommand(command: string, args: string[], cwd: string): Promise
   });
 }
 
+const ignoreList = [
+  'node_modules',
+  'reports',
+  'playwright-report',
+  'test-results',
+  'package-lock.json',
+  '.env.example',
+  '.git'
+];
+
 function copyRecursiveSync(src: string, dest: string) {
   const exists = fs.existsSync(src);
   if (!exists) return;
@@ -34,17 +44,9 @@ function copyRecursiveSync(src: string, dest: string) {
   const isDirectory = stats.isDirectory();
   const name = path.basename(src);
 
-  // Exclude list
-  if (name === 'node_modules' || 
-      name === 'reports' || 
-      name === 'playwright-report' || 
-      name === 'test-results' || 
-      name === 'package-lock.json' || 
-      name === '.env.example' ||
-      name === '.git') {
+  if (ignoreList.includes(name)) {
     return;
   }
-
 
   if (isDirectory) {
     if (!fs.existsSync(dest)) {
@@ -57,11 +59,7 @@ function copyRecursiveSync(src: string, dest: string) {
       );
     });
   } else {
-    const ext = path.extname(src);
     if (name === 'package.json') {
-      return;
-    }
-    if (ext === '.js' || ext === '.map') {
       return;
     }
     let finalDest = dest;
@@ -80,17 +78,13 @@ async function main() {
   console.log('\x1b[35m      Initializing pw-core Test Suite      \x1b[0m');
   console.log('\x1b[35m============================================\n\x1b[0m');
 
-  const targetDir = process.cwd();
-  const isYes = process.argv.includes('-y') || process.argv.includes('--yes');
+  const projectPathInput = await question('Project path (default: current directory): ');
+  const targetDir = projectPathInput.trim()
+    ? path.resolve(process.cwd(), projectPathInput.trim())
+    : process.cwd();
   
-  // 1. Ask for confirmation
-  if (!isYes) {
-    const confirm = await question('This will initialize a pw-core test suite in the current directory. Continue? (Y/n): ');
-    if (confirm.trim().toLowerCase() === 'n') {
-      console.log('Initialization cancelled.');
-      rl.close();
-      process.exit(0);
-    }
+  if (!fs.existsSync(targetDir)) {
+    fs.mkdirSync(targetDir, { recursive: true });
   }
 
   // Detect paths and find templates
@@ -158,7 +152,7 @@ async function main() {
     }
   }
 
-  // 2. Ensure package.json exists in the target directory
+  // Ensure package.json exists in the target directory
   const packageJsonPath = path.join(targetDir, 'package.json');
   if (!fs.existsSync(packageJsonPath)) {
     console.log('\nNo package.json found. Initializing a new package...');
@@ -169,7 +163,7 @@ async function main() {
     fs.writeFileSync(packageJsonPath, JSON.stringify(newPkg, null, 2), 'utf8');
   }
 
-  // 3. Copy templates from create-pw-core package to target directory
+  // Copy templates from create-pw-core package to target directory
   console.log('\nCopying template files...');
   if (isDevRepo || localExamplesDir) {
     const srcDir = isDevRepo ? path.join(devRepoPath, 'examples') : localExamplesDir!;
@@ -185,7 +179,7 @@ async function main() {
   }
   console.log('\x1b[32mSuccessfully copied template files.\x1b[0m');
 
-  // 4. Update target package.json with dependencies and scripts
+  // Update target package.json with dependencies and scripts
   console.log('\nUpdating package.json...');
   const targetPkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
   
@@ -240,50 +234,29 @@ async function main() {
   fs.writeFileSync(packageJsonPath, JSON.stringify(targetPkg, null, 2), 'utf8');
   console.log('\x1b[32mpackage.json updated.\x1b[0m');
 
-  // 5. Install NPM Packages
-  let shouldInstallDeps = true;
-  if (!isYes) {
-    const installDeps = await question('\nWould you like to install the required packages (pw-core, Playwright, TypeScript)? (Y/n): ');
-    if (installDeps.trim().toLowerCase() === 'n') {
-      shouldInstallDeps = false;
-    }
+  // Install NPM Packages (automatically accepted, no questions)
+  let pkgManager = 'npm';
+  let installArgs = ['install'];
+
+  if (fs.existsSync(path.join(targetDir, 'pnpm-lock.yaml'))) {
+    pkgManager = 'pnpm';
+  } else if (fs.existsSync(path.join(targetDir, 'yarn.lock'))) {
+    pkgManager = 'yarn';
   }
 
-  if (shouldInstallDeps) {
-    // Determine package manager (npm, yarn, pnpm)
-    let pkgManager = 'npm';
-    let installArgs = ['install'];
-
-    if (fs.existsSync(path.join(targetDir, 'pnpm-lock.yaml'))) {
-      pkgManager = 'pnpm';
-    } else if (fs.existsSync(path.join(targetDir, 'yarn.lock'))) {
-      pkgManager = 'yarn';
-    }
-
-    try {
-      await runCommand(pkgManager, installArgs, targetDir);
-      console.log('\x1b[32mPackages installed successfully.\x1b[0m');
-    } catch (err) {
-      console.error('\x1b[31mFailed to install packages. Please run npm install manually.\x1b[0m');
-    }
+  try {
+    await runCommand(pkgManager, installArgs, targetDir);
+    console.log('\x1b[32mPackages installed successfully.\x1b[0m');
+  } catch (err) {
+    console.error('\x1b[31mFailed to install packages. Please run npm install manually.\x1b[0m');
   }
 
-  // 6. Install Playwright Browsers
-  let shouldInstallBrowsers = true;
-  if (!isYes) {
-    const installBrowsers = await question('\nWould you like to install the Playwright browsers? (Y/n): ');
-    if (installBrowsers.trim().toLowerCase() === 'n') {
-      shouldInstallBrowsers = false;
-    }
-  }
-
-  if (shouldInstallBrowsers) {
-    try {
-      await runCommand('npx', ['playwright', 'install'], targetDir);
-      console.log('\x1b[32mPlaywright browsers installed successfully.\x1b[0m');
-    } catch (err) {
-      console.error('\x1b[31mFailed to install browsers. Please run npx playwright install manually.\x1b[0m');
-    }
+  // Install Playwright Browsers (automatically accepted, no questions)
+  try {
+    await runCommand('npx', ['playwright', 'install'], targetDir);
+    console.log('\x1b[32mPlaywright browsers installed successfully.\x1b[0m');
+  } catch (err) {
+    console.error('\x1b[31mFailed to install browsers. Please run npx playwright install manually.\x1b[0m');
   }
 
   console.log('\n\x1b[32;1m============================================\x1b[0m');
