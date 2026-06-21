@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import * as fs from 'fs';
 import * as path from 'path';
-import { spawn } from 'child_process';
+import { spawn, execSync } from 'child_process';
 import * as readline from 'readline';
 
 const rl = readline.createInterface({
@@ -100,46 +100,46 @@ async function main() {
     } catch (e) { }
   }
 
-  // Look for local pw-core/examples on the user's machine
-  let localExamplesDir: string | null = null;
-  if (!isDevRepo) {
-    let current = targetDir;
-    while (true) {
-      const candidate = path.join(current, 'pw-core', 'examples');
-      if (fs.existsSync(candidate) && fs.statSync(candidate).isDirectory()) {
-        localExamplesDir = candidate;
-        break;
-      }
-      const siblingCandidate = path.join(current, '..', 'pw-core', 'examples');
-      if (fs.existsSync(siblingCandidate) && fs.statSync(siblingCandidate).isDirectory()) {
-        localExamplesDir = siblingCandidate;
-        break;
-      }
-      const parent = path.dirname(current);
-      if (parent === current) {
-        break;
-      }
-      current = parent;
-    }
+  // Check for latest version on registry to bypass npx cache issues
+  const pkgJsonPath = path.join(__dirname, '../package.json');
+  if (fs.existsSync(pkgJsonPath) && !isDevRepo) {
+    try {
+      const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf8'));
+      const currentVersion = pkg.version;
+      
+      const latestVersion = execSync('npm view create-pw-core version', {
+        stdio: ['ignore', 'pipe', 'ignore'],
+        timeout: 3000
+      }).toString().trim();
 
-    if (!localExamplesDir) {
-      const hardcodedPaths = [
-        'z:/QECore/pw-core/examples',
-        'Z:/QECore/pw-core/examples'
-      ];
-      for (const p of hardcodedPaths) {
-        if (fs.existsSync(p) && fs.statSync(p).isDirectory()) {
-          localExamplesDir = p;
-          break;
-        }
+      if (latestVersion && currentVersion !== latestVersion) {
+        console.log(`\n\x1b[33mNewer version of create-pw-core found (${latestVersion}). Current: ${currentVersion}\x1b[0m`);
+        console.log('\x1b[36mRunning create-pw-core@latest to ensure you have the latest features...\n\x1b[0m');
+        
+        const args = process.argv.slice(2);
+        const child = spawn('npx', ['create-pw-core@latest', ...args], {
+          stdio: 'inherit',
+          shell: true
+        });
+        
+        await new Promise<void>((resolve) => {
+          child.on('close', (code) => {
+            rl.close();
+            process.exit(code ?? 0);
+          });
+        });
+        return;
       }
+    } catch (err) {
+      // Offline or network error: continue with the cached version
     }
   }
 
+
   let templatesDir = path.join(__dirname, 'templates');
   let templatePkgPath = path.join(templatesDir, 'package.json');
-  if (isDevRepo || localExamplesDir) {
-    const srcDir = isDevRepo ? path.join(devRepoPath, 'examples') : localExamplesDir!;
+  if (isDevRepo) {
+    const srcDir = path.join(devRepoPath, 'examples');
     templatePkgPath = path.join(srcDir, 'package.json');
   }
 
@@ -165,8 +165,8 @@ async function main() {
 
   // Copy templates from create-pw-core package to target directory
   console.log('\nCopying template files...');
-  if (isDevRepo || localExamplesDir) {
-    const srcDir = isDevRepo ? path.join(devRepoPath, 'examples') : localExamplesDir!;
+  if (isDevRepo) {
+    const srcDir = path.join(devRepoPath, 'examples');
     console.log(`\x1b[33mLocal pw-core repository found. Copying templates directly from: ${srcDir}\x1b[0m`);
     copyRecursiveSync(srcDir, targetDir);
   } else {
@@ -223,36 +223,15 @@ async function main() {
   }
 
   // Check if we are testing locally or installing published package
-  let pwCoreInstallSource = templatePkg.devDependencies?.['pw-core'] || '^1.0.0';
+  let pwCoreInstallSource = 'latest';
   const envInstallLocal = process.env.PW_CORE_INSTALL_LOCAL;
 
   if (envInstallLocal) {
     // If running in development/local test, use the absolute path to pw-core directory
     pwCoreInstallSource = `file:${envInstallLocal}`;
-  } else {
+  } else if (isDevRepo) {
     // Check if running in the development repository
-    if (isDevRepo) {
-      pwCoreInstallSource = `file:${devRepoPath}`;
-    } else {
-      if (pwCoreInstallSource.startsWith('file:')) {
-        let resolvedRootPkgPath = '';
-        if (localExamplesDir) {
-          resolvedRootPkgPath = path.join(localExamplesDir, '..', 'package.json');
-        }
-        if (fs.existsSync(resolvedRootPkgPath)) {
-          try {
-            const rootPkg = JSON.parse(fs.readFileSync(resolvedRootPkgPath, 'utf8'));
-            pwCoreInstallSource = `^${rootPkg.version}`;
-          } catch (e) {
-            pwCoreInstallSource = 'latest';
-          }
-        } else {
-          pwCoreInstallSource = 'latest';
-        }
-      } else {
-        pwCoreInstallSource = 'latest';
-      }
-    }
+    pwCoreInstallSource = `file:${devRepoPath}`;
   }
 
   targetPkg.devDependencies['pw-core'] = pwCoreInstallSource;
