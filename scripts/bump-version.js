@@ -49,6 +49,27 @@ if (fs.existsSync(lockPath)) {
   fs.writeFileSync(lockPath, JSON.stringify(lock, null, 2) + '\n', 'utf8');
 }
 
+// 4.1 Write create-pw-core/package.json and its lock file
+const createPkgPath = path.join(__dirname, '..', 'create-pw-core', 'package.json');
+if (fs.existsSync(createPkgPath)) {
+  const createPkg = JSON.parse(fs.readFileSync(createPkgPath, 'utf8'));
+  createPkg.version = newVersion;
+  fs.writeFileSync(createPkgPath, JSON.stringify(createPkg, null, 2) + '\n', 'utf8');
+  console.log(`Updated create-pw-core version to ${newVersion}`);
+}
+
+const createLockPath = path.join(__dirname, '..', 'create-pw-core', 'package-lock.json');
+if (fs.existsSync(createLockPath)) {
+  const createLock = JSON.parse(fs.readFileSync(createLockPath, 'utf8'));
+  createLock.version = newVersion;
+  if (createLock.packages && createLock.packages['']) {
+    createLock.packages[''].version = newVersion;
+  }
+  fs.writeFileSync(createLockPath, JSON.stringify(createLock, null, 2) + '\n', 'utf8');
+  console.log(`Updated create-pw-core/package-lock.json version to ${newVersion}`);
+}
+
+
 // 5. Handle release markdown file renaming
 const releasesDir = path.join(__dirname, '..', 'releases');
 const oldReleaseFile = path.join(releasesDir, `v${oldVersion}.md`);

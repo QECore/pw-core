@@ -204,12 +204,20 @@ async function main() {
     targetPkg.scripts['test'] = 'playwright test';
   }
 
+  // Merge dependencies
+  targetPkg.dependencies = targetPkg.dependencies || {};
+  if (templatePkg.dependencies) {
+    for (const [key, val] of Object.entries(templatePkg.dependencies)) {
+      targetPkg.dependencies[key] = 'latest';
+    }
+  }
+
   // Merge devDependencies
   targetPkg.devDependencies = targetPkg.devDependencies || {};
   if (templatePkg.devDependencies) {
     for (const [key, val] of Object.entries(templatePkg.devDependencies)) {
       if (key !== 'pw-core') {
-        targetPkg.devDependencies[key] = val;
+        targetPkg.devDependencies[key] = 'latest';
       }
     }
   }
@@ -236,11 +244,13 @@ async function main() {
             const rootPkg = JSON.parse(fs.readFileSync(resolvedRootPkgPath, 'utf8'));
             pwCoreInstallSource = `^${rootPkg.version}`;
           } catch (e) {
-            pwCoreInstallSource = '^1.1.1';
+            pwCoreInstallSource = 'latest';
           }
         } else {
-          pwCoreInstallSource = '^1.1.1';
+          pwCoreInstallSource = 'latest';
         }
+      } else {
+        pwCoreInstallSource = 'latest';
       }
     }
   }
