@@ -4,6 +4,7 @@ scenario.describe.serial('Worker Page State Reuse Suite', () => {
   // Scenario 1: Setup state inside the workerPage
   scenario('Test 1: Navigate and transition page state on workerPage', async ({ workerLoginPage: lp, workerDashboardPage: dp }) => {
     await lp.goto();
+    await lp.waitForLoadState('networkidle');
     await lp.verifyURL();
     await lp.verify('defaultUserLogin');
 

@@ -12,6 +12,7 @@ scenario('End-to-End User Flow on QECore App with Page Object Flows', async ({
 }) => {
   // 1. Login (automatic page usage)
   await loginPage.goto();
+  await loginPage.waitForLoadState('networkidle');
 
   // Verify title and page element states
   await loginPage.verifyTitle(/PW-Core/);
