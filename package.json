@@ -1,6 +1,6 @@
 {
   "name": "pw-core",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "workspaces": [
     "examples",
     "create-pw-core"

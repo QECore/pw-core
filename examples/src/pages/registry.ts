@@ -42,7 +42,8 @@ export const registry = createPageRegistry({
   },
   topNav: {
     testIds: {
-      logoutBtn: 'logout-button',
+      workspaceDropdown: 'active-workspace-btn',
+      logoutBtn: 'ws-option-logout',
     },
   },
 });

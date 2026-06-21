@@ -56,6 +56,7 @@ scenario('End-to-End User Flow on QECore App with Page Object Flows', async ({
   expect(taskRows.getAll('title')).toContain('Demo Task');
 
   // 4. Logout (automatic page usage)
+  await topNav.hover('workspaceDropdown');
   await topNav.click('logoutBtn');
   await loginPage.verifyURL();
   await loginPage.verify('defaultUserLogin'); // Inbuilt visibility check

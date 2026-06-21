@@ -10,6 +10,7 @@ scenario('Verify advanced locators, actions and assertions in pw-core', async ({
   // 1. Navigation and Title Verification
   await loginPage.goto();
   await loginPage.verifyTitle('PW-Core Workspace — Build, Test & Document');
+  await loginPage.waitForLoadState('networkidle');
 
   // 2. Click action using options (hasText)
   // This resolves the locator and filters it by the provided text before clicking
