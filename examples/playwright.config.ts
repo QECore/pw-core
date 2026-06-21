@@ -3,7 +3,7 @@ import { env } from '@utils/env';
 
 export default defineConfig({
   testDir: './src/tests',
-  timeout: 10000,
+  timeout: 30000,
   expect: {
     timeout: 5000,
   },

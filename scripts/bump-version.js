@@ -75,7 +75,9 @@ const releasesDir = path.join(__dirname, '..', 'releases');
 const oldReleaseFile = path.join(releasesDir, `v${oldVersion}.md`);
 const newReleaseFile = path.join(releasesDir, `v${newVersion}.md`);
 
-if (fs.existsSync(oldReleaseFile)) {
+if (fs.existsSync(newReleaseFile)) {
+  console.log(`Release doc releases/v${newVersion}.md already exists, skipping overwrite.`);
+} else if (fs.existsSync(oldReleaseFile)) {
   fs.renameSync(oldReleaseFile, newReleaseFile);
   console.log(`Renamed release doc: releases/v${oldVersion}.md -> releases/v${newVersion}.md`);
   

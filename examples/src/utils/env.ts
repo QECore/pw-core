@@ -2,7 +2,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 
 // Load env configuration
-dotenv.config({ path: path.resolve('.env') });
+dotenv.config({ path: path.resolve('.env'), quiet: true });
 
 export const ENV = {
   url: process.env.URL || 'https://qecore.github.io',
