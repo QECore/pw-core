@@ -1,0 +1,32 @@
+name: Documentation
+description: Propose new docs or updates to existing documentation.
+title: "[DOCS] "
+labels: ["docs"]
+assignees: ""
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please outline the proposed documentation changes.
+  - type: input
+    id: area
+    attributes:
+      label: Area
+      description: Which area or feature does this documentation cover?
+      placeholder: e.g. Registry, Locators, Assertions, Tables, Fixtures, CLI
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What needs documenting or updating?
+    validations:
+      required: true
+  - type: textarea
+    id: structure
+    attributes:
+      label: Proposed Outline / Content
+      description: Draft outline or key points that should be covered in the docs.
+    validations:
+      required: false

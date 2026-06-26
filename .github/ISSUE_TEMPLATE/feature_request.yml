@@ -1,0 +1,54 @@
+name: Feature Request
+description: Suggest a new idea or feature for PW-Core.
+title: "[FEATURE] "
+labels: ["feature"]
+assignees: ""
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please outline the proposed feature below.
+  - type: input
+    id: area
+    attributes:
+      label: Area
+      description: Which area of PW-Core does this feature apply to?
+      placeholder: e.g. Registry, Locators, Assertions, Tables, Fixtures, CLI
+    validations:
+      required: true
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      description: How critical is this feature?
+      options:
+        - Critical
+        - High
+        - Medium
+        - Low
+      default: 2
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: A clear and concise description of what the feature is.
+    validations:
+      required: true
+  - type: textarea
+    id: use-case
+    attributes:
+      label: Use Case / Rationale
+      description: Why is this feature needed? What problem does it solve?
+    validations:
+      required: true
+  - type: textarea
+    id: api-design
+    attributes:
+      label: Proposed API / Usage Example
+      description: Show how the code would look when calling this feature.
+      placeholder: |
+        await page.verify('element').someNewAssertion();
+    validations:
+      required: false

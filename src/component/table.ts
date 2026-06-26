@@ -1,4 +1,5 @@
 import { Locator, test } from '@playwright/test';
+import { getCallerLocation } from '../page/utils/caller-location';
 
 /**
  * A custom Array subclass representing a list of table rows.
@@ -57,7 +58,7 @@ export class Table<T extends Record<string, any>> {
         ths.map(th => th.textContent?.trim().toLowerCase() || '')
       );
       return headers;
-    });
+    }, { box: true, location: getCallerLocation() });
   }
 
   /**
@@ -81,7 +82,7 @@ export class Table<T extends Record<string, any>> {
         });
       }, headers);
       return rowsData.filter((r): r is any => r !== null) as T[];
-    });
+    }, { box: true, location: getCallerLocation() });
   }
 
   /**
@@ -101,7 +102,7 @@ export class Table<T extends Record<string, any>> {
       return await this.root.locator('tbody tr, tr[data-testid="transaction-row"]').evaluateAll(trs => {
         return trs.filter(tr => tr.querySelectorAll('td').length > 0).length;
       });
-    });
+    }, { box: true, location: getCallerLocation() });
   }
 
   /**
@@ -124,6 +125,6 @@ export class Table<T extends Record<string, any>> {
         const cell = dataRows[rowIndex].querySelectorAll('td')[columnIndex];
         return cell?.textContent?.trim() ?? '';
       }, { rowIndex, columnIndex });
-    });
+    }, { box: true, location: getCallerLocation() });
   }
 }

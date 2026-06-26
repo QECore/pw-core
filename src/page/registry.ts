@@ -1,15 +1,15 @@
 import test, { Page, TestType, Browser } from '@playwright/test';
-import { PageConfig } from './config';
+import { PageConfig, ValidatePageConfig } from './config';
 import { TypedPage } from './typed-page';
 
 export type PageRegistry = Record<string, PageConfig>;
 
-export interface PageConstructor<C extends PageConfig<any>> {
+export interface PageConstructor<C extends PageConfig> {
   new (page: Page): TypedPage<C>;
 }
 
 export type PageRegistryTest<
-  T extends Record<string, PageConfig<any>>,
+  T extends Record<string, PageConfig>,
   P,
   W,
   O = {}
@@ -67,7 +67,7 @@ export type PageRegistryTest<
 };
 
 function createPageRegistryWithClasses<
-  T extends Record<string, PageConfig<any>>,
+  T extends Record<string, PageConfig>,
   B extends TestType<any, any>
 >(registry: T, classes: any, base: B): B extends TestType<infer BaseP, infer BaseW> ? PageRegistryTest<T, BaseP, BaseW> : never {
   const fixtures: any = {
@@ -157,13 +157,14 @@ function createPageRegistryWithClasses<
  * ```
  */
 export function createPageRegistry<
-  T extends {
-    [K in keyof T]: PageConfig<T[K]>;
-  } & Record<string, PageConfig<any>>
->(registry: T): typeof test extends TestType<infer P, infer W> ? PageRegistryTest<T, P, W> : never {
+  const T extends Record<string, PageConfig>
+>(registry: [T] extends [{ [K in keyof T]: ValidatePageConfig<T[K]>; }]
+  ? T
+  : { [K in keyof T]: ValidatePageConfig<T[K]>; }
+): typeof test extends TestType<infer P, infer W> ? PageRegistryTest<T, P, W> : never {
   const classes: any = {};
   for (const key of Object.keys(registry)) {
-    const config = registry[key];
+    const config = (registry as Record<string, PageConfig>)[key];
     classes[key] = config.Class || (class extends TypedPage<any> {
       constructor(page: Page) {
         super(page, config);

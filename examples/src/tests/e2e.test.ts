@@ -32,8 +32,8 @@ scenario('End-to-End User Flow on QECore App with Page Object Flows', async ({
   // Verify elements are not present initially using verifyHidden
   await projectsPage.verifyHidden('formTitle');
 
-  await projectsPage.createProject('Demo Project', 'A project created via pw-core automation.');
-  await projectsPage.verifyProjectInTable('Demo Project');
+  await projectsPage.createProject('Demo Project', 'A project created via pw-core automation');
+  await projectsPage.verifyProjectInTable('Demo Projecter');
 
   // 3. Create a Task (automatic page usage, creating Table component inline)
   await sidebar.click('itemTasks');

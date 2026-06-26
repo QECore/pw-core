@@ -6,7 +6,10 @@ export const registry = createPageRegistry({
     url: '/login',
     testIds: {
       defaultUserLogin: 'login-default-user',
-    },
+      email: 'email-input',
+      password: 'password-input',
+      submit: 'login-submit',
+    }
   },
   dashboardPage: {
     url: '/app',
@@ -18,20 +21,22 @@ export const registry = createPageRegistry({
     url: '/app/projects',
     testIds: {
       newProject: 'new-project-button',
-      formTitle: 'form-title',
-      formDescription: 'form-description',
-      formSave: 'form-save',
       table: 'projects-table',
-    },
+      "form{item}": {
+        item: ['title', 'description', 'save'],
+        testId: "form-item"
+      }
+    }
   },
   tasksPage: {
     url: '/app/tasks',
     testIds: {
       newTask: 'new-task-button',
-      formTitle: 'form-title',
-      formDescription: 'form-description',
-      formSave: 'form-save',
       table: 'tasks-table',
+      "form{item}": {
+        item: ['title', 'description', 'save'],
+        testId: "form-item"
+      }
     },
   },
   sidebar: {
@@ -46,4 +51,23 @@ export const registry = createPageRegistry({
       logoutBtn: 'ws-option-logout',
     },
   },
+  playground: {
+    url: '/playground',
+    testIds: {
+      // Dynamic testIds: Keys converted to camelCase (e.g. activeLineChart), values kebab-cased (e.g. "active-line-chart")
+      "{status}{id}Chart": {
+        id: ['line', 'bar'],
+        status: ['active', 'inactive'],
+        testId: "status-id-chart"
+      }
+    },
+    selectors: {
+      card: ".skeu-card",
+      // Dynamic selectors: Keys camelCased (e.g. safe, danger), values preserve original casing (e.g. "#Safe", "#Danger")
+      "{status}": {
+        status: ['Safe', 'Danger'],
+        selector: "#status"
+      },
+    }
+  }
 });

@@ -1,0 +1,49 @@
+name: Release
+description: Track a planned release or release checklist.
+title: "[RELEASE] "
+labels: ["release"]
+assignees: ""
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template to track release candidate checks and checklist.
+  - type: input
+    id: version
+    attributes:
+      label: Target Version
+      placeholder: e.g. v2.0.0
+    validations:
+      required: true
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - Critical
+        - High
+        - Medium
+        - Low
+      default: 2
+    validations:
+      required: true
+  - type: textarea
+    id: changelog
+    attributes:
+      label: Changelog Summary
+      description: Bulleted list of features, enhancements, and bug fixes included.
+    validations:
+      required: true
+  - type: textarea
+    id: checklist
+    attributes:
+      label: Release Checklist
+      description: Checklist tasks.
+      value: |
+        - [ ] All unit and E2E tests passing
+        - [ ] Versions bumped in `package.json`
+        - [ ] Documentation updated
+        - [ ] Changelog written
+        - [ ] Tagged and published
+    validations:
+      required: true
