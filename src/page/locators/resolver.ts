@@ -1,17 +1,21 @@
 import { Page, Locator, test } from '@playwright/test';
-import { ChainedKeys, PageKeys, zeroArgMethodsList, oneArgMethodsList } from '../config';
-import { formatStepDescription } from '../utils/formatter';
+import { ChainedKeys, PageKeys, zeroArgMethodsList, oneArgMethodsList, DynamicSelectorEntry } from '../config';
+import { formatStepDescription, formatTarget } from '../utils/formatter';
+import { getExpandedTestIds } from './dynamic-locator-resolver';
+import type { DynamicLocatorEntry } from './dynamic-locator-resolver';
+import { getCallerLocation } from '../utils/caller-location';
 
-export function defineLocators<T extends { testIds?: Record<string, string>; selectors?: Record<string, string> }>(
+export function defineLocators<T extends { testIds?: Record<string, string | DynamicLocatorEntry>; selectors?: Record<string, string | DynamicSelectorEntry> }>(
   instance: any,
   context: Page | Locator,
   config: T
-): void {
+ ): void {
   if (config.testIds) {
-    for (const key of Object.keys(config.testIds)) {
+    const expanded = getExpandedTestIds(config.testIds);
+    for (const key of Object.keys(expanded)) {
       Object.defineProperty(instance, key, {
         get: () => {
-          return context.getByTestId(config.testIds![key]);
+          return context.getByTestId(expanded[key]);
         },
         enumerable: true,
         configurable: true,
@@ -19,10 +23,11 @@ export function defineLocators<T extends { testIds?: Record<string, string>; sel
     }
   }
   if (config.selectors) {
-    for (const key of Object.keys(config.selectors)) {
+    const expanded = getExpandedTestIds(config.selectors);
+    for (const key of Object.keys(expanded)) {
       Object.defineProperty(instance, key, {
         get: () => {
-          return context.locator(config.selectors![key]);
+          return context.locator(expanded[key]);
         },
         enumerable: true,
         configurable: true,
@@ -31,7 +36,7 @@ export function defineLocators<T extends { testIds?: Record<string, string>; sel
   }
 }
 
-export function resolveLocator<T extends { testIds?: Record<string, string>; selectors?: Record<string, string> }>(
+export function resolveLocator<T extends { testIds?: Record<string, string | DynamicLocatorEntry>; selectors?: Record<string, string | DynamicSelectorEntry> }>(
   context: Page | Locator,
   config: T,
   target: PageKeys<T> | ChainedKeys<T> | Locator,
@@ -41,12 +46,15 @@ export function resolveLocator<T extends { testIds?: Record<string, string>; sel
   const targetStr = target as string;
   const parts = targetStr.split('.');
 
+  const expandedTestIds = config.testIds ? getExpandedTestIds(config.testIds) : undefined;
+  const expandedSelectors = config.selectors ? getExpandedTestIds(config.selectors) : undefined;
+
   const resolveSingle = (key: string, ctx: Page | Locator): Locator => {
-    if (config.testIds && key in config.testIds) {
-      return ctx.getByTestId(config.testIds[key]);
+    if (expandedTestIds && key in expandedTestIds) {
+      return ctx.getByTestId(expandedTestIds[key]);
     }
-    if (config.selectors && key in config.selectors) {
-      return ctx.locator(config.selectors[key]);
+    if (expandedSelectors && key in expandedSelectors) {
+      return ctx.locator(expandedSelectors[key]);
     }
     throw new Error(`Locator key '${key}' is not defined in testIds or selectors.`);
   };
@@ -73,7 +81,7 @@ export function resolveLocator<T extends { testIds?: Record<string, string>; sel
 /**
  * Resolve a config key to a proxied Locator with step-wrapped Playwright methods.
  */
-export function locator<T extends { testIds?: Record<string, string>; selectors?: Record<string, string> }>(
+export function locator<T extends { testIds?: Record<string, string | DynamicLocatorEntry>; selectors?: Record<string, string | DynamicSelectorEntry> }>(
   context: Page | Locator,
   config: T,
   target: PageKeys<T> | ChainedKeys<T> | Locator,
@@ -93,7 +101,37 @@ export function wrapLocatorWithProxy(loc: Locator): Locator {
       if (typeof val === 'function' && actionMethods.includes(propKey as any)) {
         return (...args: any[]) => {
           const stepName = formatStepDescription(propKey as string, targetLoc, args);
-          return test.step(stepName, () => val.apply(targetLoc, args));
+          if (propKey === 'fill') {
+            const options = args[1];
+            let shouldMask = false;
+            if (options && typeof options === 'object' && options.mask !== undefined) {
+              shouldMask = options.mask === true;
+            } else {
+              const targetStr = formatTarget(targetLoc);
+              const targetStrLower = targetStr.toLowerCase();
+              shouldMask = targetStrLower.includes('pass') || targetStrLower.includes('pw');
+            }
+            if (shouldMask) {
+              return test.step(stepName, async () => {
+                await targetLoc.focus();
+                await targetLoc.evaluate((el, val) => {
+                  const inputEl = el as HTMLInputElement | HTMLTextAreaElement;
+                  const prototype = el.tagName === 'TEXTAREA' 
+                    ? window.HTMLTextAreaElement.prototype 
+                    : window.HTMLInputElement.prototype;
+                  const descriptor = Object.getOwnPropertyDescriptor(prototype, 'value');
+                  if (descriptor && descriptor.set) {
+                    descriptor.set.call(inputEl, val);
+                  } else {
+                    inputEl.value = val;
+                  }
+                  inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+                  inputEl.dispatchEvent(new Event('change', { bubbles: true }));
+                }, args[0]);
+              }, { box: true, location: getCallerLocation() });
+            }
+          }
+          return test.step(stepName, () => val.apply(targetLoc, args), { box: true, location: getCallerLocation() });
         };
       }
       return val;

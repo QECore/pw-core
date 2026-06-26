@@ -3,6 +3,7 @@ import { Page, expect as playwrightExpect, test } from '@playwright/test';
 type GotoOptions = { referrer?: string; timeout?: number; waitUntil?: 'load' | 'domcontentloaded' | 'networkidle' | 'commit' };
 type ToHaveURLOptions = Parameters<ReturnType<typeof playwrightExpect<Page>>['toHaveURL']>[1];
 type ToHaveTitleOptions = Parameters<ReturnType<typeof playwrightExpect<Page>>['toHaveTitle']>[1];
+type StepLocation = { file: string; line: number; column: number };
 
 function resolveUrlPattern(
   url: string | undefined,
@@ -40,14 +41,15 @@ export async function goto(
   page: Page,
   url: string | undefined,
   constructorName: string,
-  options?: GotoOptions
+  options?: GotoOptions,
+  location?: StepLocation
 ): Promise<void> {
   await test.step(`Goto "${url || ''}"`, async () => {
     if (!url) {
       throw new Error(`URL is not defined on ${constructorName}`);
     }
     await page.goto(url, options);
-  });
+  }, { box: true, location });
 }
 
 /**
@@ -59,13 +61,14 @@ export async function verifyURL(
   url: string | undefined,
   constructorName: string,
   urlOrOptions?: string | RegExp | ToHaveURLOptions,
-  options?: ToHaveURLOptions
+  options?: ToHaveURLOptions,
+  location?: StepLocation
 ): Promise<void> {
   const { targetUrl, actualOptions } = resolveUrlPattern(url, constructorName, urlOrOptions, options);
   const stepName = `Verify URL matches "${targetUrl.toString()}"`;
   await test.step(stepName, async () => {
     await playwrightExpect(page).toHaveURL(targetUrl, actualOptions);
-  });
+  }, { box: true, location });
 }
 
 /**
@@ -75,12 +78,13 @@ export async function verifyURL(
 export async function verifyTitle(
   page: Page,
   title: string | RegExp,
-  options?: ToHaveTitleOptions
+  options?: ToHaveTitleOptions,
+  location?: StepLocation
 ): Promise<void> {
   const stepName = `Verify title matches "${title}"`;
   await test.step(stepName, async () => {
     await playwrightExpect(page).toHaveTitle(title, options);
-  });
+  }, { box: true, location });
 }
 
 /**
@@ -89,11 +93,12 @@ export async function verifyTitle(
  */
 export async function reload(
   page: Page,
-  options?: Parameters<Page['reload']>[0]
+  options?: Parameters<Page['reload']>[0],
+  location?: StepLocation
 ): Promise<void> {
   await test.step('Reload page', async () => {
     await page.reload(options);
-  });
+  }, { box: true, location });
 }
 
 /**
@@ -103,12 +108,13 @@ export async function reload(
 export async function waitForLoadState(
   page: Page,
   state?: Parameters<Page['waitForLoadState']>[0],
-  options?: Parameters<Page['waitForLoadState']>[1]
+  options?: Parameters<Page['waitForLoadState']>[1],
+  location?: StepLocation
 ): Promise<void> {
   const stepName = `Wait for load state "${state ?? 'load'}"`;
   await test.step(stepName, async () => {
     await page.waitForLoadState(state, options);
-  });
+  }, { box: true, location });
 }
 
 /**
@@ -120,7 +126,8 @@ export async function waitForURL(
   url: string | undefined,
   constructorName: string,
   urlOrOptions?: string | RegExp | Parameters<Page['waitForURL']>[1],
-  options?: Parameters<Page['waitForURL']>[1]
+  options?: Parameters<Page['waitForURL']>[1],
+  location?: StepLocation
 ): Promise<void> {
   let targetUrl: string | RegExp;
   let actualOptions = options;
@@ -140,5 +147,5 @@ export async function waitForURL(
   const stepName = `Wait for URL "${targetUrl.toString()}"`;
   await test.step(stepName, async () => {
     await page.waitForURL(targetUrl, actualOptions);
-  });
+  }, { box: true, location });
 }

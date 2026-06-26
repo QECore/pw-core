@@ -1,0 +1,45 @@
+name: Enhancement
+description: Propose an improvement or refinement to an existing feature.
+title: "[ENHANCEMENT] "
+labels: ["enhancement"]
+assignees: ""
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please outline the proposed enhancement below.
+  - type: input
+    id: area
+    attributes:
+      label: Area
+      description: Which area of PW-Core does this enhancement target?
+      placeholder: e.g. Registry, Locators, Assertions, Tables, Fixtures, CLI
+    validations:
+      required: true
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      description: How critical is this enhancement?
+      options:
+        - Critical
+        - High
+        - Medium
+        - Low
+      default: 2
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: A clear and concise description of the enhancement.
+    validations:
+      required: true
+  - type: textarea
+    id: current-vs-proposed
+    attributes:
+      label: Current Behavior vs Proposed Behavior
+      description: Explain how it works today, and how it should work after the enhancement.
+    validations:
+      required: true

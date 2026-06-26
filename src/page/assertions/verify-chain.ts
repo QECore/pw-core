@@ -1,6 +1,7 @@
 import { Locator, expect as playwrightExpect, test } from '@playwright/test';
 import { ChainedKeys, PageKeys } from '../config';
 import { formatAssertionDescription } from '../utils/formatter';
+import { getCallerLocation } from '../utils/caller-location';
 
 export type VerifyOptions = { timeout?: number; nth?: number; hasText?: string | RegExp; message?: string };
 
@@ -61,7 +62,7 @@ export function createVerifyChain<T extends { testIds?: Record<string, string>; 
         const expectation = expectFn(locator, stepName);
         const match = isNegated ? expectation.not : expectation;
         await match.toBeVisible(options);
-      });
+      }, { box: true, location: getCallerLocation() });
     };
 
     return new Proxy(baseFn, {
@@ -98,7 +99,7 @@ export function createVerifyChain<T extends { testIds?: Record<string, string>; 
             const expectation = expectFn(locator, stepName);
             const match = isNegated ? expectation.not : expectation;
             await (match as any)[prop](...args);
-          });
+          }, { box: true, location: getCallerLocation() });
         };
       }
     });

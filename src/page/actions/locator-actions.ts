@@ -1,6 +1,7 @@
 import { Locator, test } from '@playwright/test';
 import { AllowedMethodKeys, getOptionsArgumentIndex, zeroArgMethodsList, oneArgMethodsList } from '../config';
-import { formatStepDescription } from '../utils/formatter';
+import { formatStepDescription, formatTarget } from '../utils/formatter';
+import { getCallerLocation } from '../utils/caller-location';
 
 export function executeAction(
   prop: AllowedMethodKeys,
@@ -56,9 +57,41 @@ export function executeAction(
     }
   }
 
+  let shouldMask = false;
+  if (prop === 'fill' && methodArgs.length > 0) {
+    const opts = methodArgs[1];
+    if (opts && typeof opts === 'object' && opts.mask !== undefined) {
+      shouldMask = opts.mask === true;
+    } else {
+      const targetStr = formatTarget(locatorKey);
+      const targetStrLower = targetStr.toLowerCase();
+      shouldMask = targetStrLower.includes('pass') || targetStrLower.includes('pw');
+    }
+  }
+
+  if (prop === 'fill' && shouldMask) {
+    return test.step(stepName, async () => {
+      await locator.focus();
+      await locator.evaluate((el, val) => {
+        const inputEl = el as HTMLInputElement | HTMLTextAreaElement;
+        const prototype = el.tagName === 'TEXTAREA' 
+          ? window.HTMLTextAreaElement.prototype 
+          : window.HTMLInputElement.prototype;
+        const descriptor = Object.getOwnPropertyDescriptor(prototype, 'value');
+        if (descriptor && descriptor.set) {
+          descriptor.set.call(inputEl, val);
+        } else {
+          inputEl.value = val;
+        }
+        inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+        inputEl.dispatchEvent(new Event('change', { bubbles: true }));
+      }, methodArgs[0]);
+    }, { box: true, location: getCallerLocation() });
+  }
+
   return test.step(stepName, () => {
     return method.apply(locator, methodArgs);
-  });
+  }, { box: true, location: getCallerLocation() });
 }
 
 export function defineActionMethods(

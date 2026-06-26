@@ -5,6 +5,7 @@ export * from './assertions/verify-helpers';
 export * from './assertions/expect';
 export * from './actions/page-actions';
 export * from './actions/locator-actions';
+export * from './locators/dynamic-locator-resolver';
 export * from './locators/resolver';
 export * from './typed-page';
 export * from './registry';

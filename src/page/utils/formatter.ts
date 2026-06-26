@@ -12,7 +12,13 @@ export function formatStepDescription(methodName: string, target: any, args: any
   const targetStr = formatTarget(target);
   if (methodName === 'fill' && args[0] !== undefined) {
     const options = args[1];
-    const shouldMask = !(options && typeof options === 'object' && options.mask === false);
+    let shouldMask = false;
+    if (options && typeof options === 'object' && options.mask !== undefined) {
+      shouldMask = options.mask === true;
+    } else {
+      const targetStrLower = targetStr.toLowerCase();
+      shouldMask = targetStrLower.includes('pass') || targetStrLower.includes('pw');
+    }
     const displayValue = shouldMask ? '*'.repeat(String(args[0]).length) : args[0];
     return `Fill "${targetStr}" with "${displayValue}"`;
   }
