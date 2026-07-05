@@ -12,42 +12,10 @@ export type {
   DynamicSelectorEntry
 } from './locators/dynamic-locator-resolver.js'
 
-export const zeroArgMethodsList = [
-  'click',
-  'dblclick',
-  'hover',
-  'focus',
-  'blur',
-  'check',
-  'uncheck',
-  'clear',
-  'waitFor',
-  'isChecked',
-  'isDisabled',
-  'isVisible',
-  'textContent',
-  'innerText',
-  'allInnerTexts',
-  'allTextContents',
-  'count',
-  'scrollIntoViewIfNeeded',
-  'boundingBox'
-] as const
-
-export const oneArgMethodsList = [
-  'fill',
-  'press',
-  'pressSequentially',
-  'selectOption',
-  'setInputFiles',
-  'getAttribute',
-  'dragTo'
-] as const
-
-export type AllowedZeroArgMethods = (typeof zeroArgMethodsList)[number]
-export type AllowedOneArgMethods = (typeof oneArgMethodsList)[number]
-export type AllowedMethodKeys = AllowedZeroArgMethods | AllowedOneArgMethods
-
+import { zeroArgMethodsList, oneArgMethodsList } from '../constants/methods'
+import { rolesList, strategyList } from '../constants/strategies'
+import { AllowedZeroArgMethods, AllowedOneArgMethods, AllowedMethodKeys } from '../types/methods'
+import { RoleType, StrategyType, PlaywrightRoleOptions, PlaywrightTextOptions, LocatorStrategyOptions } from '../types/strategies'
 import {
   ValidateDynamicEntryProperties,
   ExtractPlaceholders,
@@ -60,17 +28,83 @@ import {
   ValidateTestIds
 } from './types/validation.js'
 
-// ─── Core key types ──────────────────────────────────────────────────────────
+export { zeroArgMethodsList, oneArgMethodsList } from '../constants/methods'
+export { rolesList, strategyList } from '../constants/strategies'
+export { AllowedZeroArgMethods, AllowedOneArgMethods, AllowedMethodKeys } from '../types/methods'
+export { RoleType, StrategyType, PlaywrightRoleOptions, PlaywrightTextOptions, LocatorStrategyOptions } from '../types/strategies'
 
+// Mapping of locator keys to their strategy group
+export type GetStrategyOfKey<T, K extends string> =
+  // Check testId / testIds
+  K extends (T extends { testId: infer I } ? ResolvedTestIdKeys<I> : never)
+    ? 'testId'
+    : K extends (T extends { testIds: infer I } ? ResolvedTestIdKeys<I> : never)
+      ? 'testId'
+      // Check selector / selectors
+      : K extends (T extends { selector: infer S } ? ResolvedTestIdKeys<S> : never)
+        ? 'selector'
+        : K extends (T extends { selectors: infer S } ? ResolvedTestIdKeys<S> : never)
+          ? 'selector'
+          // Check other strategies
+          : {
+              [S in Exclude<StrategyType, 'testId' | 'selector'>]: K extends (T extends Record<S, readonly string[]>
+                ? T[S][number]
+                : never)
+                ? S
+                : never
+            }[Exclude<StrategyType, 'testId' | 'selector'>]
+
+export type ModifyOptionsForTarget<T, Target, Options> = Options & {
+  nth?: number
+  hasText?: string | RegExp
+} & (Target extends string
+  ? LocatorStrategyOptions<GetStrategyOfKey<T, Target>>
+  : {})
+
+// Core key types
 export type PageKeys<T> =
-  | (T extends { testIds?: infer I } ? (I extends Record<string, any> ? ResolvedTestIdKeys<I> : never) : never)
-  | (T extends { selectors?: infer S } ? (S extends Record<string, any> ? ResolvedTestIdKeys<S> : never) : never)
+  | (T extends { testId: infer I } ? (I extends Record<string, any> ? ResolvedTestIdKeys<I> : never) : never)
+  | (T extends { testIds: infer I } ? (I extends Record<string, any> ? ResolvedTestIdKeys<I> : never) : never)
+  | (T extends { selector: infer S } ? (S extends Record<string, any> ? ResolvedTestIdKeys<S> : never) : never)
+  | (T extends { selectors: infer S } ? (S extends Record<string, any> ? ResolvedTestIdKeys<S> : never) : never)
+  | {
+      [S in Exclude<StrategyType, 'testId' | 'selector'>]: T extends Record<S, readonly string[]>
+        ? T[S][number]
+        : never
+    }[Exclude<StrategyType, 'testId' | 'selector'>]
+
+export type CheckableLocatorKeys<T> = {
+  [S in 'checkbox' | 'radio']: T extends Record<S, readonly string[]> ? T[S][number] : never
+}['checkbox' | 'radio']
+
+export type CheckboxLocatorKeys<T> = T extends Record<'checkbox', readonly string[]>
+  ? T['checkbox'][number]
+  : never
+
+export type EditableLocatorKeys<T> = {
+  [S in 'label' | 'placeholder' | 'textbox' | 'searchbox']: T extends Record<S, readonly string[]> ? T[S][number] : never
+}['label' | 'placeholder' | 'textbox' | 'searchbox']
+
+export type SelectableLocatorKeys<T> = {
+  [S in 'combobox' | 'listbox' | 'option']: T extends Record<S, readonly string[]> ? T[S][number] : never
+}['combobox' | 'listbox' | 'option']
 
 export type TypedLocators<T> = {
   [K in PageKeys<T>]: Locator
 }
 
-export type ChainedKeys<T> = `${PageKeys<T>}.${PageKeys<T>}`
+export type UniversalKeys<T> =
+  | (T extends { testId: infer I } ? ResolvedTestIdKeys<I> : never)
+  | (T extends { testIds: infer I } ? ResolvedTestIdKeys<I> : never)
+  | (T extends { selector: infer S } ? ResolvedTestIdKeys<S> : never)
+  | (T extends { selectors: infer S } ? ResolvedTestIdKeys<S> : never)
+
+export type SemanticKeys<T> = Exclude<PageKeys<T>, UniversalKeys<T>>
+
+export type ChainedKeys<T> =
+  | `${UniversalKeys<T>}.${PageKeys<T>}`
+  | `${UniversalKeys<T>}.${SemanticKeys<T>}.${UniversalKeys<T>}`
+  | `${UniversalKeys<T>}.${UniversalKeys<T>}.${PageKeys<T>}`
 
 export type TargetKey<T> = PageKeys<T> | ChainedKeys<T> | Locator
 
@@ -82,58 +116,116 @@ export function getOptionsArgumentIndex(methodName: AllowedMethodKeys): number {
   return -1
 }
 
-/** Map type accepted by the `testIds` property in a page config. */
+/** Map type accepted by the `testId` property in a page config. */
 export type TestIdMap = Record<string, string | DynamicTestIdEntry>
 
 export type SelectorMap = Record<string, string | DynamicSelectorEntry>
 
 export type PageConfig = {
   url?: string
+  testId?: TestIdMap
+  selector?: SelectorMap
+  // Backward compatibility
   testIds?: TestIdMap
   selectors?: SelectorMap
+} & {
+  [S in Exclude<StrategyType, 'testId' | 'selector'>]?: readonly string[]
 }
 
-type GetTestIds<T> = T extends { testIds: infer I } ? (I extends Record<string, any> ? I : {}) : {}
-type GetSelectors<T> = T extends { selectors: infer S } ? (S extends Record<string, any> ? S : {}) : {}
+export type KeysOfStrategy<T, S extends StrategyType> = S extends 'testId'
+  ? T extends { testId: infer I }
+    ? ResolvedTestIdKeys<I>
+    : T extends { testIds: infer I }
+      ? ResolvedTestIdKeys<I>
+      : never
+  : S extends 'selector'
+    ? T extends { selector: infer I }
+      ? ResolvedTestIdKeys<I>
+      : T extends { selectors: infer S2 }
+        ? ResolvedTestIdKeys<S2>
+        : never
+    : T extends Record<S, infer A>
+      ? A extends readonly string[]
+        ? A[number]
+        : never
+      : never
+
+export type KeysOfOtherStrategies<T, S extends StrategyType> = {
+  [O in Exclude<StrategyType, S>]: KeysOfStrategy<T, O>
+}[Exclude<StrategyType, S>]
+
+type GetTestIds<T> = T extends { testId: infer I }
+  ? (I extends Record<string, any> ? I : {})
+  : T extends { testIds: infer I }
+    ? (I extends Record<string, any> ? I : {})
+    : {}
+
+type GetSelectors<T> = T extends { selector: infer S }
+  ? (S extends Record<string, any> ? S : {})
+  : T extends { selectors: infer S }
+    ? (S extends Record<string, any> ? S : {})
+    : {}
 
 export type ValidatePageConfig<T> = {
   url?: string
+  testId?: T extends { testId: infer I }
+    ? I extends Record<string, any>
+      ? ValidateTestIds<I, 'testId', GetSelectors<T>> & {
+          [K in keyof I]: K extends KeysOfOtherStrategies<T, 'testId'>
+            ? { [P in `Error: Duplicate key "${K & string}" is defined in multiple strategies`]: never }
+            : any
+        }
+      : TestIdMap
+    : TestIdMap
   testIds?: T extends { testIds: infer I }
-  ? I extends Record<string, any>
-  ? ValidateTestIds<I, 'testId', GetSelectors<T>>
-  : TestIdMap
-  : TestIdMap
+    ? I extends Record<string, any>
+      ? ValidateTestIds<I, 'testId', GetSelectors<T>> & {
+          [K in keyof I]: K extends KeysOfOtherStrategies<T, 'testId'>
+            ? { [P in `Error: Duplicate key "${K & string}" is defined in multiple strategies`]: never }
+            : any
+        }
+      : TestIdMap
+    : TestIdMap
+  selector?: T extends { selector: infer S }
+    ? S extends Record<string, any>
+      ? ValidateTestIds<S, 'selector', GetTestIds<T>> & {
+          [K in keyof S]: K extends KeysOfOtherStrategies<T, 'selector'>
+            ? { [P in `Error: Duplicate key "${K & string}" is defined in multiple strategies`]: never }
+            : any
+        }
+      : SelectorMap
+    : SelectorMap
   selectors?: T extends { selectors: infer S }
-  ? S extends Record<string, any>
-  ? ValidateTestIds<S, 'selector', GetTestIds<T>>
-  : SelectorMap
-  : SelectorMap
+    ? S extends Record<string, any>
+      ? ValidateTestIds<S, 'selector', GetTestIds<T>> & {
+          [K in keyof S]: K extends KeysOfOtherStrategies<T, 'selector'>
+            ? { [P in `Error: Duplicate key "${K & string}" is defined in multiple strategies`]: never }
+            : any
+        }
+      : SelectorMap
+    : SelectorMap
+} & {
+  [S in Exclude<StrategyType, 'testId' | 'selector'>]?: T extends Record<S, infer A>
+    ? A extends readonly string[]
+      ? {
+          [I in keyof A]: A[I] extends string
+            ? A[I] extends KeysOfOtherStrategies<T, S>
+              ? `Error: Duplicate key "${A[I]}" is defined in multiple strategies`
+              : A[I]
+            : A[I]
+        }
+      : readonly string[]
+    : readonly string[]
 } & {
   [K in Exclude<keyof T, keyof PageConfig>]: never
 }
 
 /**
  * Creates a strongly-typed page configuration object containing URLs, testIds, and CSS selectors.
- *
- * @example
- * ```ts
- * import { createPageConfig } from 'pw-core/page';
- *
- * const config = createPageConfig({
- *   url: '/login',
- *   testIds: {
- *     username: 'username-input',
- *     password: 'password-input',
- *     submitBtn: 'login-button',
- *   },
- *   selectors: {
- *     errorAlert: '.alert-danger',
- *   }
- * });
- * ```
  */
 export function createPageConfig<const T extends PageConfig>(
   config: [T] extends [ValidatePageConfig<T>] ? T : ValidatePageConfig<T>
 ): T {
   return config as any
 }
+

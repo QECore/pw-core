@@ -1,5 +1,5 @@
 import { Locator, expect as playwrightExpect, test } from '@playwright/test'
-import { ChainedKeys, PageKeys } from '../config'
+import { ChainedKeys, PageKeys, GetStrategyOfKey } from '../config'
 import { formatAssertionDescription } from '../utils/formatter'
 import { getCallerLocation } from '../utils/caller-location'
 
@@ -48,15 +48,23 @@ type ModifyMatcherArgs<Args extends any[]> = Args extends []
           }
         ]
 
-type DynamicallyModifiedMatchers<T> = {
+type DynamicallyModifiedMatchers<T, Target> = {
   [K in keyof PlaywrightLocatorMatchers]: K extends 'not'
-    ? Omit<VerifyMatchers<T>, 'not'>
-    : PlaywrightLocatorMatchers[K] extends (...args: infer Args) => any
-      ? (...args: ModifyMatcherArgs<Args>) => Promise<void>
-      : PlaywrightLocatorMatchers[K]
+    ? Omit<VerifyMatchers<T, Target>, 'not'>
+    : K extends 'toBeChecked'
+      ? Target extends Locator
+        ? (...args: ModifyMatcherArgs<Parameters<PlaywrightLocatorMatchers[K]>>) => Promise<void>
+        : Target extends string
+          ? GetStrategyOfKey<T, Target> extends 'checkbox' | 'radio'
+            ? (...args: ModifyMatcherArgs<Parameters<PlaywrightLocatorMatchers[K]>>) => Promise<void>
+            : never
+          : never
+      : PlaywrightLocatorMatchers[K] extends (...args: infer Args) => any
+        ? (...args: ModifyMatcherArgs<Args>) => Promise<void>
+        : PlaywrightLocatorMatchers[K]
 }
 
-export type VerifyMatchers<T> = DynamicallyModifiedMatchers<T> &
+export type VerifyMatchers<T, Target> = DynamicallyModifiedMatchers<T, Target> &
   PromiseLike<void> & {
     (
       options?: Parameters<PlaywrightLocatorMatchers['toBeVisible']>[0] & {
@@ -67,12 +75,15 @@ export type VerifyMatchers<T> = DynamicallyModifiedMatchers<T> &
     ): Promise<void>
   }
 
-export type VerifyFn<T> = (target: PageKeys<T> | ChainedKeys<T> | Locator, options?: VerifyOptions) => VerifyMatchers<T>
+export type VerifyFn<T> = <Target extends PageKeys<T> | Locator>(
+  target: Target,
+  options?: VerifyOptions
+) => VerifyMatchers<T, Target>
 
 export type AssertionsMethod<T> = {
   verify: VerifyFn<T> & { soft: VerifyFn<T> }
   verifyHidden(
-    target: PageKeys<T> | ChainedKeys<T> | Locator,
+    target: PageKeys<T> | Locator,
     options?: Parameters<ReturnType<typeof playwrightExpect<Locator>>['toBeHidden']>[0] & {
       nth?: number
       hasText?: string | RegExp
@@ -80,7 +91,7 @@ export type AssertionsMethod<T> = {
     }
   ): Promise<void>
   verifyEnabled(
-    target: PageKeys<T> | ChainedKeys<T> | Locator,
+    target: PageKeys<T> | Locator,
     options?: Parameters<ReturnType<typeof playwrightExpect<Locator>>['toBeEnabled']>[0] & {
       nth?: number
       hasText?: string | RegExp
@@ -88,31 +99,26 @@ export type AssertionsMethod<T> = {
     }
   ): Promise<void>
   verifyDisabled(
-    target: PageKeys<T> | ChainedKeys<T> | Locator,
+    target: PageKeys<T> | Locator,
     options?: Parameters<ReturnType<typeof playwrightExpect<Locator>>['toBeDisabled']>[0] & {
       nth?: number
       hasText?: string | RegExp
       message?: string
     }
   ): Promise<void>
-  expect(target: PageKeys<T> | ChainedKeys<T> | Locator, message?: string): ReturnType<typeof playwrightExpect<Locator>>
+  expect(target: PageKeys<T> | Locator, message?: string): ReturnType<typeof playwrightExpect<Locator>>
   locator(
-    target: PageKeys<T> | ChainedKeys<T> | Locator,
+    target: PageKeys<T> | Locator,
     options?: Parameters<Locator['filter']>[0] & { nth?: number }
   ): Locator
 }
 
-export function createVerifyChain<
-  T extends {
-    testIds?: Record<string, string>
-    selectors?: Record<string, string>
-  }
->(
+export function createVerifyChain<T>(
   resolveLocator: (target: any, options?: { nth?: number; hasText?: string | RegExp; raw?: boolean }) => Locator,
-  target: PageKeys<T> | ChainedKeys<T> | Locator,
+  target: PageKeys<T> | Locator,
   verifyOptions: VerifyOptions | undefined,
   isSoft: boolean
-): VerifyMatchers<T> {
+): VerifyMatchers<T, any> {
   const defaultNth = verifyOptions?.nth
   const defaultHasText = verifyOptions?.hasText
   const defaultMessage = verifyOptions?.message

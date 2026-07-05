@@ -1,6 +1,5 @@
 import { Page, Locator, expect as playwrightExpect, test } from '@playwright/test'
-import { TypedLocators, ProxyLocatorMethods, PageKeys, ChainedKeys, DynamicSelectorEntry } from './config'
-import type { DynamicLocatorEntry } from './locators/dynamic-locator-resolver'
+import { PageConfig, TypedLocators, ProxyLocatorMethods, PageKeys, ChainedKeys, ModifyOptionsForTarget, UniversalKeys, SemanticKeys } from './config'
 import { VerifyOptions, VerifyFn, AssertionsMethod, createVerifyChain } from './assertions/verify-chain'
 import { verifyHidden, verifyDisabled, verifyEnabled } from './assertions/verify-helpers'
 import { typedExpect } from './assertions/expect'
@@ -9,13 +8,7 @@ import { defineActionMethods } from './actions/locator-actions'
 import { defineLocators, resolveLocator, locator } from './locators/resolver'
 import { getCallerLocation } from './utils/caller-location'
 
-class TypedPageClass<
-  T extends {
-    testIds?: Record<string, string | DynamicLocatorEntry>
-    selectors?: Record<string, string | DynamicSelectorEntry>
-    url?: string
-  }
-> {
+class TypedPageClass<T extends PageConfig> {
   readonly page: Page
   readonly context: Page | Locator
   protected readonly config: T
@@ -138,19 +131,79 @@ class TypedPageClass<
     return waitForURL(this.page, this.url, this.constructor.name, urlOrOptions, options, getCallerLocation())
   }
 
-  resolveLocator(
-    target: PageKeys<T> | ChainedKeys<T> | Locator,
-    options?: { nth?: number; raw?: boolean; hasText?: string | RegExp }
+  resolveLocator<Target extends PageKeys<T> | Locator>(
+    target: Target,
+    options?: ModifyOptionsForTarget<T, Target, { nth?: number; raw?: boolean; hasText?: string | RegExp }>
   ): Locator {
     return resolveLocator(this.context, this.config, target as any, options)
   }
 
   /** Resolve a config key to a proxied Locator with step-wrapped methods. */
   locator(
-    target: PageKeys<T> | ChainedKeys<T> | Locator,
+    target: PageKeys<T> | Locator,
     options?: Parameters<Locator['filter']>[0] & { nth?: number }
   ): Locator {
     return locator(this.context, this.config, target as any, options)
+  }
+
+  /** Chain multiple locators sequentially up to depth 3. */
+  chain<
+    P1 extends UniversalKeys<T>,
+    P2 extends PageKeys<T>
+  >(
+    p1: P1,
+    p2: P2,
+    options?: { nth?: number; raw?: boolean; hasText?: string | RegExp }
+  ): Locator
+
+  chain<
+    P1 extends UniversalKeys<T>,
+    P2 extends SemanticKeys<T>,
+    P3 extends UniversalKeys<T>
+  >(
+    p1: P1,
+    p2: P2,
+    p3: P3,
+    options?: { nth?: number; raw?: boolean; hasText?: string | RegExp }
+  ): Locator
+
+  chain<
+    P1 extends UniversalKeys<T>,
+    P2 extends UniversalKeys<T>,
+    P3 extends PageKeys<T>
+  >(
+    p1: P1,
+    p2: P2,
+    p3: P3,
+    options?: { nth?: number; raw?: boolean; hasText?: string | RegExp }
+  ): Locator
+
+  chain(
+    path: ChainedKeys<T>,
+    options?: { nth?: number; raw?: boolean; hasText?: string | RegExp }
+  ): Locator
+
+  chain(...args: any[]): Locator {
+    let options: any = undefined
+    const keys: string[] = []
+
+    for (const arg of args) {
+      if (typeof arg === 'string') {
+        if (arg.includes('.')) {
+          keys.push(...arg.split('.'))
+        } else {
+          keys.push(arg)
+        }
+      } else if (typeof arg === 'object' && arg !== null) {
+        options = arg
+      }
+    }
+
+    let loc = resolveLocator(this.context, this.config, keys[0], options)
+    for (let i = 1; i < keys.length; i++) {
+      loc = resolveLocator(loc, this.config, keys[i], options)
+    }
+    return loc
   }
 
   /** Chainable assertions on config keys. Supports `.soft` for soft assertions. */
@@ -163,7 +216,7 @@ class TypedPageClass<
   }
 
   async verifyHidden(
-    target: PageKeys<T> | ChainedKeys<T> | Locator,
+    target: PageKeys<T> | Locator,
     options?: Parameters<ReturnType<typeof playwrightExpect<Locator>>['toBeHidden']>[0] & {
       nth?: number
       message?: string
@@ -173,7 +226,7 @@ class TypedPageClass<
   }
 
   async verifyEnabled(
-    target: PageKeys<T> | ChainedKeys<T> | Locator,
+    target: PageKeys<T> | Locator,
     options?: Parameters<ReturnType<typeof playwrightExpect<Locator>>['toBeEnabled']>[0] & {
       nth?: number
       message?: string
@@ -183,7 +236,7 @@ class TypedPageClass<
   }
 
   async verifyDisabled(
-    target: PageKeys<T> | ChainedKeys<T> | Locator,
+    target: PageKeys<T> | Locator,
     options?: Parameters<ReturnType<typeof playwrightExpect<Locator>>['toBeDisabled']>[0] & {
       nth?: number
       message?: string
@@ -193,7 +246,7 @@ class TypedPageClass<
   }
 
   expect(
-    target: PageKeys<T> | ChainedKeys<T> | Locator,
+    target: PageKeys<T> | Locator,
     message?: string
   ): ReturnType<typeof playwrightExpect<Locator>> {
     const resolved = typeof target !== 'string' ? (target as Locator) : this.resolveLocator(target as any)
@@ -201,32 +254,13 @@ class TypedPageClass<
   }
 }
 
-export type TypedPageType<
-  T extends {
-    testIds?: Record<string, string | DynamicLocatorEntry>
-    selectors?: Record<string, string | DynamicSelectorEntry>
-    url?: string
-  }
-> = TypedPageClass<T> & TypedLocators<T> & ProxyLocatorMethods<T> & AssertionsMethod<T>
+export type TypedPageType<T extends PageConfig> = TypedPageClass<T> &
+  TypedLocators<T> &
+  ProxyLocatorMethods<T> &
+  AssertionsMethod<T>
 
 export const TypedPage = TypedPageClass as {
-  new <
-    T extends {
-      testIds?: Record<string, string | DynamicLocatorEntry>
-      selectors?: Record<string, string | DynamicSelectorEntry>
-      url?: string
-    }
-  >(
-    context: Page | Locator,
-    config: T,
-    options?: { timeout?: number }
-  ): TypedPageType<T>
+  new <T extends PageConfig>(context: Page | Locator, config: T, options?: { timeout?: number }): TypedPageType<T>
 }
 
-export type TypedPage<
-  T extends {
-    testIds?: Record<string, string | DynamicLocatorEntry>
-    selectors?: Record<string, string | DynamicSelectorEntry>
-    url?: string
-  }
-> = TypedPageType<T>
+export type TypedPage<T extends PageConfig> = TypedPageType<T>

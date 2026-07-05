@@ -1,24 +1,3 @@
-export const GOOD_WORDS = [
-  'why',
-  'not',
-  'playwright',
-  'page',
-  'registry',
-  'dynamic',
-  'locators',
-  'user',
-  'settings',
-  'transaction',
-  'table',
-  'login',
-  'submit',
-  'overview',
-  'features',
-  'releases',
-  'docs',
-  'mcp'
-]
-
 export interface RankingRule {
   strategy: string
   source?: 'target' | 'child' | 'sibling' | 'parent' | 'ancestor'
@@ -86,6 +65,9 @@ export const priorityRankingRules: RankingRule[] = [
   { strategy: 'label', attrName: 'aria-labelledby', score: 575 },
   { strategy: 'label', attrName: 'title', score: 550 },
   { strategy: 'label', score: 570 },
+  { strategy: 'placeholder', score: 565 },
+  { strategy: 'altText', score: 563 },
+  { strategy: 'title', score: 562 },
 
   { strategy: 'class', score: 500 },
   { strategy: 'css', score: 400 },
@@ -94,7 +76,7 @@ export const priorityRankingRules: RankingRule[] = [
 
 export function getPriorityScore(c: { strategy: string; source: string; depth: number; attrName?: string; roleVal?: string }): number {
   const isIdAttr = c.attrName && /id/i.test(c.attrName)
-  
+
   for (const rule of priorityRankingRules) {
     if (rule.strategy !== c.strategy) continue
     if (rule.source && rule.source !== c.source) continue

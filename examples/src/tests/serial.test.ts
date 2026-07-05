@@ -1,4 +1,4 @@
-import { registry as test } from '@pages/registry';
+import { registry as test } from "@pages/registry";
 
 // Serial — all tests run sequentially in one browser, sharing the same worker page
 test.describe.serial('Playground Serial Suite', () => {
@@ -17,7 +17,7 @@ test.describe.serial('Playground Serial Suite', () => {
       await workerPlayground.fill('playgroundTextarea', 'Worker-scoped textarea content');
 
       await workerPlayground.click('playgroundSwitch');
-      await workerPlayground.click('termsCheckbox');
+      await workerPlayground.check('Accept terms');
     }
   );
 

@@ -1,13 +1,10 @@
-import { createPageRegistry, PageConfig } from 'pw-core/page';
+import { createPageRegistry } from 'pw-core/page';
 
 export const registry = createPageRegistry({
   loginPage: {
     url: '/login',
     testIds: {
-      defaultUserLogin: 'login-default-user',
-      email: 'email-input',
-      password: 'password-input',
-      submit: 'login-submit'
+      defaultUserLogin: 'login-default-user'
     }
   },
   dashboardPage: {
@@ -19,18 +16,18 @@ export const registry = createPageRegistry({
   projectsPage: {
     url: '/app/projects',
     testIds: {
-      newProject: 'new-project-button',
-      table: 'projects-table',
       'form{item}': {
         item: ['title', 'description', 'save'],
         testId: 'form-item'
-      }
+      },
+      newProject: 'new-project-button',
+      table: 'projects-table'
     }
   },
   sidebar: {
     testIds: {
       'item{page}': {
-        page: ['projects', 'tasks'],
+        page: ['projects'],
         testId: 'sidebar-page'
       }
     }
@@ -39,27 +36,24 @@ export const registry = createPageRegistry({
     url: '/playground',
     testIds: {
       'tabTrigger{item}': {
-        item: ['charts', 'tables', 'inputs', 'buttons', 'overlays', 'advanced'],
+        item: ['inputs', 'buttons', 'tables', 'charts', 'overlays', 'advanced'],
         testId: 'tab-trigger-item'
       }
     },
     selectors: {
-      // Input elements use HTML id selectors
-      'playground{item}': {
-        item: ['text', 'password', 'number', 'switch', 'textarea', 'otp', 'select', 'toggle'],
-        selector: '#playground-{item}'
-      },
-      // Button variant elements
       'btnVariant{item}': {
-        item: ['default', 'secondary', 'outline', 'destructive', 'ghost', 'link'],
+        item: ['default', 'secondary', 'outline', 'destructive'],
         selector: '#btn-variant-{item}'
       },
-      // Toggle alignment group
       'toggleAlign{item}': {
         item: ['left', 'center', 'right'],
         selector: '#toggle-align-{item}'
       },
-      termsCheckbox: '#terms'
-    }
+      'playground{item}': {
+        item: ['text', 'password', 'number', 'switch', 'textarea', 'otp'],
+        selector: '#playground-{item}'
+      }
+    },
+    checkbox: ['Accept terms']
   }
 });

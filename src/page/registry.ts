@@ -1,6 +1,7 @@
 import test, { Page, TestType, Browser } from '@playwright/test'
 import { PageConfig, ValidatePageConfig } from './config'
 import { TypedPage } from './typed-page'
+import { buildLookupIndex } from './locators/resolver'
 
 export type PageRegistry = Record<string, PageConfig>
 
@@ -226,8 +227,9 @@ export function createPageRegistry<const T extends Record<string, PageConfig>>(
   const classes: any = {}
   for (const key of Object.keys(registry)) {
     const config = (registry as Record<string, PageConfig>)[key]
+    buildLookupIndex(config)
     classes[key] =
-      class extends TypedPage<any> {
+      class extends TypedPage<PageConfig> {
         constructor(page: Page) {
           super(page, config)
         }

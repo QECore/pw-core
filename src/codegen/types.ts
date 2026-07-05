@@ -19,6 +19,7 @@ export interface Candidate {
   uniquenessScore: number
   totalScore: number
   unique: boolean
+  valueToScore?: string
 }
 
 export interface LocatorCandidate extends Candidate {

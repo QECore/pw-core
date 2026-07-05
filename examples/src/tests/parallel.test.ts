@@ -1,5 +1,5 @@
 import { registry as test } from '@pages/registry';
-import { scenario } from '@utils/fixtures';
+import { scenario } from 'src/utils/fixtures';
 
 // Parallel — each test runs in its own browser instance
 test(

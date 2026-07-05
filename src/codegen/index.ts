@@ -1,8 +1,9 @@
 import * as fs from 'fs'
 import * as path from 'path'
+import { toRegistryKey } from './key-utils'
 
 export interface SelectorMatch {
-  type: 'testId' | 'selector'
+  type: string
   val: string
 }
 
@@ -10,7 +11,7 @@ export interface MatchResult {
   pageKey: string
   elementKey: string
   val: string
-  type: 'testId' | 'selector'
+  type: string
   isNew: boolean
 }
 
@@ -26,13 +27,83 @@ export function getSelectorValue(selector: string): SelectorMatch {
     const match = selector.match(regex)
     if (match) {
       let val = match[1]
-      // Strip outer quotes if captured
       val = val.replace(/^["']|["']$/g, '')
       return { type: 'testId', val }
     }
   }
 
-  // 2. Try to find ID selector
+  // 2. Playwright getByRole
+  const roleRegex = /internal:role=([a-zA-Z0-9_-]+)\[name="([^"]+)"i?\]/
+  const roleMatch = selector.match(roleRegex)
+  if (roleMatch) {
+    let type = roleMatch[1]
+    if (type === 'img') type = 'altText'
+    return { type, val: roleMatch[2] }
+  }
+
+  const roleSimpleRegex = /role=([a-zA-Z0-9_-]+)/
+  const roleSimpleMatch = selector.match(roleSimpleRegex)
+  if (roleSimpleMatch) {
+    return { type: roleSimpleMatch[1], val: roleSimpleMatch[1] }
+  }
+
+  // 3. Playwright getByLabel
+  const labelRegex = /internal:label="([^"]+)"i?/
+  const labelMatch = selector.match(labelRegex)
+  if (labelMatch) {
+    return { type: 'label', val: labelMatch[1] }
+  }
+
+  // 4. Playwright getByPlaceholder
+  const placeholderRegexes = [
+    /internal:placeholder="([^"]+)"i?/,
+    /internal:attr=\[placeholder="([^"]+)"[si]?\]/
+  ]
+  for (const regex of placeholderRegexes) {
+    const placeholderMatch = selector.match(regex)
+    if (placeholderMatch) {
+      return { type: 'placeholder', val: placeholderMatch[1] }
+    }
+  }
+
+  // 5. Playwright getByAltText
+  const altRegexes = [
+    /internal:alt="([^"]+)"i?/,
+    /internal:attr=\[alt="([^"]+)"[si]?\]/
+  ]
+  for (const regex of altRegexes) {
+    const altMatch = selector.match(regex)
+    if (altMatch) {
+      return { type: 'altText', val: altMatch[1] }
+    }
+  }
+
+  // 6. Playwright getByTitle
+  const titleRegexes = [
+    /internal:title="([^"]+)"i?/,
+    /internal:attr=\[title="([^"]+)"[si]?\]/
+  ]
+  for (const regex of titleRegexes) {
+    const titleMatch = selector.match(regex)
+    if (titleMatch) {
+      return { type: 'title', val: titleMatch[1] }
+    }
+  }
+
+  // 7. Playwright getByText
+  const textRegex = /(?:internal:text|text)="([^"]+)"i?/
+  const textMatch = selector.match(textRegex)
+  if (textMatch) {
+    return { type: 'text', val: textMatch[1] }
+  }
+
+  const textSimpleRegex = /(?:internal:text|text)=([^"\s]+)/
+  const textSimpleMatch = selector.match(textSimpleRegex)
+  if (textSimpleMatch) {
+    return { type: 'text', val: textSimpleMatch[1] }
+  }
+
+  // 8. Try to find ID selector
   const idRegexes = [/id=([a-zA-Z0-9_-]+)/, /#([a-zA-Z0-9_-]+)/]
   for (const regex of idRegexes) {
     const match = selector.match(regex)
@@ -41,7 +112,7 @@ export function getSelectorValue(selector: string): SelectorMatch {
     }
   }
 
-  // 3. Try to find class selectors
+  // 9. Try to find class selectors
   const classRegexes = [/\.([a-zA-Z0-9_-]+)/]
   for (const regex of classRegexes) {
     const match = selector.match(regex)
@@ -50,12 +121,11 @@ export function getSelectorValue(selector: string): SelectorMatch {
     }
   }
 
-  // 4. Fallback to raw selector
+  // 10. Fallback to raw selector
   return { type: 'selector', val: selector }
 }
 
 export function findRegistryFile(dir: string): string | null {
-  // 1. Search downward
   const queue = [dir]
   while (queue.length > 0) {
     const current = queue.shift()!
@@ -79,7 +149,6 @@ export function findRegistryFile(dir: string): string | null {
     } catch (e) { }
   }
 
-  // 2. Search upward if not found downward
   let parent = path.dirname(dir)
   while (parent !== dir) {
     const checkPath = path.join(parent, 'registry.ts')
@@ -106,7 +175,6 @@ export function findRegistryFile(dir: string): string | null {
 }
 
 export function findPlaywrightConfig(dir: string): string | null {
-  // 1. Search downward
   const queue = [dir]
   while (queue.length > 0) {
     const current = queue.shift()!
@@ -125,7 +193,6 @@ export function findPlaywrightConfig(dir: string): string | null {
     } catch (e) { }
   }
 
-  // 2. Search upward if not found downward
   let parent = path.dirname(dir)
   while (parent !== dir) {
     const tsPath = path.join(parent, 'playwright.config.ts')
@@ -478,15 +545,19 @@ export function writeRegistry(filePath: string, registryObj: any, overrideMode?:
   try {
     const keyReplacements: Record<string, string> = {}
 
-    // Collect all codegen page keys: codegen_* prefix + legacy codegenPage
     const codegenKeys = Object.keys(registryObj).filter((k) => {
       const pageConfig = registryObj[k]
       const usedSet = usedPageKeys ? (usedPageKeys instanceof Set ? usedPageKeys : new Set(usedPageKeys)) : new Set<string>()
       const isUsed = usedSet.has(k)
 
       if (pageConfig && !isUsed) {
-        const hasLocators = (pageConfig.testIds && Object.keys(pageConfig.testIds).length > 0) ||
-                            (pageConfig.selectors && Object.keys(pageConfig.selectors).length > 0);
+        let hasLocators = false
+        for (const sk of Object.keys(pageConfig)) {
+          if (sk !== 'url' && pageConfig[sk] && Object.keys(pageConfig[sk]).length > 0) {
+            hasLocators = true
+            break
+          }
+        }
         if (!hasLocators) return false
       }
       const isDefaultCodegen = k.startsWith('codegen_') || k === 'codegenPage'
@@ -499,12 +570,17 @@ export function writeRegistry(filePath: string, registryObj: any, overrideMode?:
       return isDefaultCodegen
     })
 
-    // Automatically collapse similar static keys in each codegen page config before writing
     for (const codegenKey of codegenKeys) {
       const pageConfig = registryObj[codegenKey]
       if (pageConfig) {
+        if (pageConfig.testId) {
+          pageConfig.testId = collapsePageDict(pageConfig.testId, true, keyReplacements)
+        }
         if (pageConfig.testIds) {
           pageConfig.testIds = collapsePageDict(pageConfig.testIds, true, keyReplacements)
+        }
+        if (pageConfig.selector) {
+          pageConfig.selector = collapsePageDict(pageConfig.selector, false, keyReplacements)
         }
         if (pageConfig.selectors) {
           pageConfig.selectors = collapsePageDict(pageConfig.selectors, false, keyReplacements)
@@ -531,12 +607,30 @@ export function writeRegistry(filePath: string, registryObj: any, overrideMode?:
         let keys = Object.keys(obj)
         if (isTestIdsOrSelectors) {
           keys = keys.sort((a, b) => a.localeCompare(b))
+        } else if (indent === 4) {
+          const order = [
+            'url', 'testId', 'testIds', 'selector', 'selectors',
+            'text', 'label', 'title', 'placeholder', 'altText',
+            'button', 'checkbox', 'radio', 'heading', 'link', 'dialog',
+            'textbox', 'searchbox', 'combobox', 'list', 'listbox',
+            'menu', 'menuitem', 'option', 'row', 'cell', 'grid', 'gridcell',
+            'tab', 'tabpanel', 'switch', 'progressbar', 'status', 'tooltip',
+            'tree', 'treeitem', 'banner', 'navigation', 'article', 'main', 'form', 'region'
+          ]
+          keys = keys.sort((a, b) => {
+            const idxA = order.indexOf(a)
+            const idxB = order.indexOf(b)
+            if (idxA !== -1 && idxB !== -1) return idxA - idxB
+            if (idxA !== -1) return -1
+            if (idxB !== -1) return 1
+            return a.localeCompare(b)
+          })
         }
         if (keys.length === 0) return '{}'
         let res = '{\n'
         keys.forEach((key, index) => {
           const formattedKey = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(key) ? key : `'${key.replace(/'/g, "\\'")}'`
-          const nextIsTestIdsOrSelectors = isTestIdsOrSelectors || key === 'testIds' || key === 'selectors'
+          const nextIsTestIdsOrSelectors = isTestIdsOrSelectors || key === 'testId' || key === 'testIds' || key === 'selector' || key === 'selectors'
           res += `${spaces}  ${formattedKey}: ${serialize(obj[key], indent + 2, nextIsTestIdsOrSelectors)}${index < keys.length - 1 ? ',\n' : '\n'}`
         })
         res += `${spaces}}`
@@ -545,14 +639,12 @@ export function writeRegistry(filePath: string, registryObj: any, overrideMode?:
       return 'undefined'
     }
 
-    // Process each codegen key: update existing entry in-place, or append as new
     for (const codegenKey of codegenKeys) {
       const escapedKey = codegenKey.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
       const keyPattern = new RegExp(`(['"\`]?${escapedKey}['"\`]?\\s*:\\s*\\{)`)
       const match = content.match(keyPattern)
 
       if (match && match.index !== undefined) {
-        // Key exists in file — find its object bounds and update in-place
         const startIdx = match.index + match[0].length - 1
         let braceCount = 0
         let endIdx = -1
@@ -571,7 +663,6 @@ export function writeRegistry(filePath: string, registryObj: any, overrideMode?:
           content = content.substring(0, startIdx) + updatedObjectText + content.substring(endIdx)
         }
       } else {
-        // Key is new — append before the closing brace of createPageRegistry(...)
         const bounds = findRegistryCallBounds(content)
         if (bounds) {
           const lastBraceIdx = content.lastIndexOf('}', bounds.endIdx)
@@ -581,7 +672,6 @@ export function writeRegistry(filePath: string, registryObj: any, overrideMode?:
               : `'${codegenKey}'`
             const serializedPage = `  ${formattedKey}: ${serialize(registryObj[codegenKey], 2)}`
 
-            // Find the last non-whitespace character inside the registry call to insert the comma correctly
             let lastCharIdx = lastBraceIdx - 1
             while (lastCharIdx > bounds.startIdx && /\s/.test(content[lastCharIdx])) {
               lastCharIdx--
@@ -602,7 +692,6 @@ export function writeRegistry(filePath: string, registryObj: any, overrideMode?:
 
     fs.writeFileSync(filePath, content, 'utf8')
 
-    // Refactor key references in test files
     if (Object.keys(keyReplacements).length > 0) {
       const testsDir = path.join(path.dirname(filePath), '../tests')
       if (fs.existsSync(testsDir)) {
@@ -640,15 +729,13 @@ export function findPageKey(url: string, title: string, registryObj: any, overri
   try {
     const u = new URL(url)
     pathname = u.pathname
-    // Handle hash-based SPA routing: only treat it as a route if it starts with '#/'
     if (u.hash && u.hash.startsWith('#/')) {
-      hashPath = u.hash.slice(1) // Keep the leading '/' (e.g., '/pw-core')
+      hashPath = u.hash.slice(1)
     }
   } catch (e) {
     pathname = url || ''
   }
 
-  // Strip query parameters and hash/fragment IDs from both pathnames
   const cleanPath = (p: string) => {
     let result = p.split('?')[0].split('#')[0]
     if (result.startsWith('/')) result = result.substring(1)
@@ -660,9 +747,6 @@ export function findPageKey(url: string, title: string, registryObj: any, overri
     ? cleanPath(hashPath) 
     : cleanPath(pathname)
 
-  // Return the key of an existing hand-written registry entry if the URL matches exactly.
-  // For root URL (effectivePath is ''), skip codegen_* entries to allow title-based
-  // page disambiguation — otherwise everything on root-URL SPAs would accumulate into one entry.
   for (const key of Object.keys(registryObj)) {
     const pageConfig = registryObj[key]
     if (pageConfig && pageConfig.url) {
@@ -671,20 +755,13 @@ export function findPageKey(url: string, title: string, registryObj: any, overri
       if (configUrl.endsWith('/')) configUrl = configUrl.slice(0, -1)
       if (configUrl === effectivePath) {
         const isCodegen = key.startsWith('codegen_') || key === 'codegenPage'
-        
-        // In default mode, do not match/reuse hand-written (non-codegen) pages
         if (!overrideMode && !isCodegen) continue
-        
-        // At root (''), don't auto-match existing codegen entries; fall through to title key
         if (!effectivePath && isCodegen) continue
         return key
       }
     }
   }
 
-  // Derive a camelCase key from the effective path segments.
-  // Hyphens and underscores within a segment are treated as word separators
-  // so that e.g. /pw-core => pwCore and /k6-core => k6Core.
   let keyBase = ''
   if (effectivePath) {
     const segments = effectivePath.split('/').filter(Boolean)
@@ -703,8 +780,6 @@ export function findPageKey(url: string, title: string, registryObj: any, overri
       })
       .join('')
   }
-  // When URL gives no path (root-URL SPA), use the page title to create a distinct key.
-  // Take the first meaningful segment before common separators: "Login | QECore" → "login"
   if (!keyBase && title) {
     const firstSegment = title.split(/[|\u2014\-:]/)[0].trim()
     const cleanTitle = (firstSegment || title).replace(/[^a-zA-Z0-9\s]/g, '').trim()
@@ -721,53 +796,14 @@ export function findPageKey(url: string, title: string, registryObj: any, overri
     keyBase = 'home'
   }
 
-  // Prefix with codegen_ to distinguish auto-generated entries from hand-written page objects
   if (overrideMode) {
     return keyBase
   }
   return `codegen_${keyBase}`
 }
 
-function toCamelCase(str: string): string {
-  const structuralWords = [
-    'option',
-    'title',
-    'button',
-    'btn',
-    'link',
-    'input',
-    'checkbox',
-    'label',
-    'value',
-    'text',
-    'wrapper',
-    'container',
-    'card',
-    'item'
-  ]
-  let clean = str
-  for (const word of structuralWords) {
-    const regex = new RegExp(`(^|[^a-zA-Z0-9])${word}([^a-zA-Z0-9]|$)`, 'gi')
-    clean = clean.replace(regex, '$1$2')
-  }
-  const hasSpaces = str.includes(' ')
-  const words = clean.split(/[^a-zA-Z0-9]/).filter(Boolean)
-  if (words.length === 0) return 'element'
-  if (hasSpaces) {
-    const joined = words.join('')
-    const cleaned = joined.replace(/^\d+/, '').replace(/\d+$/, '')
-    return cleaned || 'element'
-  }
-  const camel = words
-    .map((word, idx) => {
-      const lower = word.toLowerCase()
-      if (idx === 0) return lower
-      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
-    })
-    .join('')
-
-  const cleaned = camel.replace(/^\d+/, '').replace(/\d+$/, '')
-  return cleaned || 'element'
+export function toCamelCase(str: string): string {
+  return toRegistryKey(str)
 }
 
 function normalizePageKey(key: string): string {
@@ -777,9 +813,9 @@ function normalizePageKey(key: string): string {
   return key
 }
 
-function findMatchInDict(
+export function findMatchInDict(
   val: string,
-  isTestId: boolean,
+  strategyType: string,
   pageKey: string,
   registryObj: any,
   overrideMode?: boolean
@@ -796,7 +832,6 @@ function findMatchInDict(
     return dynamicKey.replace(`{${placeholder}}`, capValue)
   }
 
-  // 1. Search in the target page first
   let targetPageKey = pageKey
   for (const k of Object.keys(registryObj)) {
     if (normalizePageKey(k) === normalizePageKey(pageKey)) {
@@ -805,26 +840,59 @@ function findMatchInDict(
     }
   }
   const pageConfig = registryObj[targetPageKey] || {}
-  const targetDict = isTestId ? pageConfig.testIds || {} : pageConfig.selectors || {}
 
-  for (const k of Object.keys(targetDict)) {
-    const entry = targetDict[k]
-    if (typeof entry === 'object' && entry !== null) {
-      const { matches, matchedValue, placeholderName } = matchDynamicEntry(val, entry, isTestId)
-      if (matches && matchedValue && placeholderName) {
-        const arr = entry[placeholderName] || []
-        if (!arr.includes(matchedValue)) {
-          entry[placeholderName] = [...arr, matchedValue]
+  const searchConfig = (config: any, pk: string): MatchResult | null => {
+    if (strategyType === 'testId') {
+      const dict = config.testId || config.testIds || {}
+      for (const k of Object.keys(dict)) {
+        const entry = dict[k]
+        if (typeof entry === 'object' && entry !== null) {
+          const { matches, matchedValue, placeholderName } = matchDynamicEntry(val, entry, true)
+          if (matches && matchedValue && placeholderName) {
+            const arr = entry[placeholderName] || []
+            if (!arr.includes(matchedValue)) {
+              entry[placeholderName] = [...arr, matchedValue]
+            }
+            const expandedKey = getExpandedKey(k, placeholderName, matchedValue)
+            return { pageKey: pk, elementKey: expandedKey, val, type: 'testId', isNew: false }
+          }
+        } else if (entry === val) {
+          return { pageKey: pk, elementKey: k, val, type: 'testId', isNew: false }
         }
-        const expandedKey = getExpandedKey(k, placeholderName, matchedValue)
-        return { pageKey: targetPageKey, elementKey: expandedKey, val, type: isTestId ? 'testId' : 'selector', isNew: false }
       }
-    } else if (entry === val) {
-      return { pageKey: targetPageKey, elementKey: k, val, type: isTestId ? 'testId' : 'selector', isNew: false }
+    } else if (strategyType === 'selector') {
+      const dict = config.selector || config.selectors || {}
+      for (const k of Object.keys(dict)) {
+        const entry = dict[k]
+        if (typeof entry === 'object' && entry !== null) {
+          const { matches, matchedValue, placeholderName } = matchDynamicEntry(val, entry, false)
+          if (matches && matchedValue && placeholderName) {
+            const arr = entry[placeholderName] || []
+            if (!arr.includes(matchedValue)) {
+              entry[placeholderName] = [...arr, matchedValue]
+            }
+            const expandedKey = getExpandedKey(k, placeholderName, matchedValue)
+            return { pageKey: pk, elementKey: expandedKey, val, type: 'selector', isNew: false }
+          }
+        } else if (entry === val) {
+          return { pageKey: pk, elementKey: k, val, type: 'selector', isNew: false }
+        }
+      }
+    } else {
+      const arr = config[strategyType]
+      if (Array.isArray(arr)) {
+        if (arr.includes(val)) {
+          const elementKey = val
+          return { pageKey: pk, elementKey, val, type: strategyType, isNew: false }
+        }
+      }
     }
+    return null
   }
 
-  // 2. Search in all other pages
+  const targetMatch = searchConfig(pageConfig, targetPageKey)
+  if (targetMatch) return targetMatch
+
   for (const pk of Object.keys(registryObj)) {
     if (normalizePageKey(pk) === normalizePageKey(pageKey)) continue
 
@@ -832,38 +900,9 @@ function findMatchInDict(
     const isOtherCodegen = pk.startsWith('codegen_') || pk === 'codegenPage'
     if (isCurrentCodegen && isOtherCodegen) continue
 
-
-
     const config = registryObj[pk] || {}
-    const dict = isTestId ? config.testIds || {} : config.selectors || {}
-    for (const k of Object.keys(dict)) {
-      const entry = dict[k]
-      if (typeof entry === 'object' && entry !== null) {
-        const { matches, matchedValue, placeholderName } = matchDynamicEntry(val, entry, isTestId)
-        if (matches && matchedValue && placeholderName) {
-          const arr = entry[placeholderName] || []
-          const valueExists = arr.includes(matchedValue)
-          
-          if (!overrideMode && !valueExists && !isOtherCodegen) {
-            continue
-          }
-
-          if (!valueExists) {
-            entry[placeholderName] = [...arr, matchedValue]
-          }
-          const expandedKey = getExpandedKey(k, placeholderName, matchedValue)
-          return {
-            pageKey: pk,
-            elementKey: expandedKey,
-            val,
-            type: isTestId ? 'testId' : 'selector',
-            isNew: false
-          }
-        }
-      } else if (entry === val) {
-        return { pageKey: pk, elementKey: k, val, type: isTestId ? 'testId' : 'selector', isNew: false }
-      }
-    }
+    const match = searchConfig(config, pk)
+    if (match) return match
   }
 
   return null
@@ -874,79 +913,64 @@ export function findElementKey(
   pageKey: string,
   registryObj: any,
   overrideMode?: boolean,
-  extra?: { targetTestId?: string; targetId?: string; targetParentId?: string }
+  extra?: { targetTestId?: string; targetId?: string; targetParentId?: string; overrideType?: string }
 ): MatchResult {
-  const { type, val } = getSelectorValue(selector)
-  const isTestId = type === 'testId'
+  let { type, val } = getSelectorValue(selector)
+  if (extra?.overrideType) {
+    type = extra.overrideType
+  }
 
   // 1. Try matching with the selector itself first
-  const selectorMatch = findMatchInDict(val, isTestId, pageKey, registryObj, overrideMode)
+  const selectorMatch = findMatchInDict(val, type, pageKey, registryObj, overrideMode)
   if (selectorMatch) return selectorMatch
+
+  // 1.5. Check if the value exists in ANY other strategy array/object under the page config to avoid duplicates and recreation
+  const pageConfig = registryObj[pageKey] || {}
+  for (const k of Object.keys(pageConfig)) {
+    if (k === 'url') continue
+    const match = findMatchInDict(val, k, pageKey, registryObj, overrideMode)
+    if (match) {
+      return match
+    }
+  }
 
   // 2. Try matching targetTestId (if any) against testIds in registry
   if (extra?.targetTestId) {
-    const testIdMatch = findMatchInDict(extra.targetTestId, true, pageKey, registryObj, overrideMode)
+    const testIdMatch = findMatchInDict(extra.targetTestId, 'testId', pageKey, registryObj, overrideMode)
     if (testIdMatch) return testIdMatch
   }
 
   // 3. Try matching targetId (if any) against selectors/testIds
   if (extra?.targetId) {
-    const idSelectorMatch = findMatchInDict(extra.targetId, false, pageKey, registryObj, overrideMode)
+    const idSelectorMatch = findMatchInDict(extra.targetId, 'selector', pageKey, registryObj, overrideMode)
     if (idSelectorMatch) return idSelectorMatch
-    const idTestIdMatch = findMatchInDict(extra.targetId, true, pageKey, registryObj, overrideMode)
+    const idTestIdMatch = findMatchInDict(extra.targetId, 'testId', pageKey, registryObj, overrideMode)
     if (idTestIdMatch) return idTestIdMatch
   }
 
   // 4. Try matching targetParentId (if any) against selectors/testIds
   if (extra?.targetParentId) {
-    const pIdSelectorMatch = findMatchInDict(extra.targetParentId, false, pageKey, registryObj, overrideMode)
+    const pIdSelectorMatch = findMatchInDict(extra.targetParentId, 'selector', pageKey, registryObj, overrideMode)
     if (pIdSelectorMatch) return pIdSelectorMatch
   }
 
-  const pageConfig = registryObj[pageKey] || {}
+  // Already declared above: pageConfig
 
-  // Generate a new key name using toCamelCase
-  let baseKey = ''
-  if (isTestId) {
-    baseKey = toCamelCase(val)
-    const testIds = pageConfig.testIds || {}
-    if (testIds[baseKey]) {
-      return { pageKey, elementKey: baseKey, val, type, isNew: false }
-    }
-  } else {
-    if (val.startsWith('#') || val.startsWith('.')) {
-      baseKey = toCamelCase(val.substring(1))
-    } else {
-      const nameMatch = selector.match(/name="([^"]+)"/i) || selector.match(/name='([^']+)'/i)
-      if (nameMatch) {
-        baseKey = toCamelCase(nameMatch[1])
-      } else {
-        const textMatch =
-          selector.match(/text=([^"\s]+)/i) ||
-          selector.match(/text="([^"]+)"/i) ||
-          selector.match(/text='([^']+)'/i) ||
-          selector.match(/has-text\("([^"]+)"\)/i) ||
-          selector.match(/has-text\('([^']+)'\)/i) ||
-          selector.match(/has-text\=\/\^([^\$]+)\$\//i) ||
-          selector.match(/has-text\=\/([^\/]+)\//i)
-        if (textMatch) {
-          baseKey = toCamelCase(textMatch[1])
-        } else {
-          baseKey = 'element'
-        }
-      }
-    }
-    const selectors = pageConfig.selectors || {}
-    if (selectors[baseKey]) {
-      return { pageKey, elementKey: baseKey, val, type, isNew: false }
-    }
-  }
-
+  let baseKey = (type === 'testId' || type === 'selector') ? toCamelCase(val) : val
   if (!baseKey) baseKey = 'element'
 
   let finalKey = baseKey
   let counter = 1
-  const existingKeys = new Set([...Object.keys(pageConfig.testIds || {}), ...Object.keys(pageConfig.selectors || {})])
+  const existingKeys = new Set<string>()
+  for (const key of Object.keys(pageConfig)) {
+    const entry = pageConfig[key]
+    if (Array.isArray(entry)) {
+      entry.forEach(v => existingKeys.add(v))
+    } else if (typeof entry === 'object' && entry !== null) {
+      Object.keys(entry).forEach(k => existingKeys.add(k))
+    }
+  }
+
   while (existingKeys.has(finalKey)) {
     finalKey = baseKey + counter
     counter++
@@ -973,6 +997,9 @@ export function formatActionCall(
     return null
   }
 
+  // Escape single quotes in elementKey so generated code like click('I\'m Feeling Lucky') is valid JS
+  const safeKey = elementKey.replace(/'/g, "\\'")
+
   switch (action.name) {
     case 'click': {
       let method = 'click'
@@ -992,7 +1019,7 @@ export function formatActionCall(
         opts.push(`nth: ${action.nth}`)
       }
       const optsStr = opts.length ? `, { ${opts.join(', ')} }` : ''
-      return `  await ${pageKey}.${method}('${elementKey}'${optsStr});`
+      return `  await ${pageKey}.${method}('${safeKey}'${optsStr});`
     }
     case 'hover': {
       const locatorExpr = getLocatorExpression()
@@ -1000,7 +1027,7 @@ export function formatActionCall(
         return `  await ${locatorExpr}.hover();`
       }
       const optsStr = action.nth !== undefined && action.nth !== 0 ? `, { nth: ${action.nth} }` : ''
-      return `  await ${pageKey}.hover('${elementKey}'${optsStr});`
+      return `  await ${pageKey}.hover('${safeKey}'${optsStr});`
     }
     case 'check': {
       const locatorExpr = getLocatorExpression()
@@ -1008,7 +1035,7 @@ export function formatActionCall(
         return `  await ${locatorExpr}.check();`
       }
       const optsStr = action.nth !== undefined && action.nth !== 0 ? `, { nth: ${action.nth} }` : ''
-      return `  await ${pageKey}.check('${elementKey}'${optsStr});`
+      return `  await ${pageKey}.check('${safeKey}'${optsStr});`
     }
     case 'uncheck': {
       const locatorExpr = getLocatorExpression()
@@ -1016,7 +1043,7 @@ export function formatActionCall(
         return `  await ${locatorExpr}.uncheck();`
       }
       const optsStr = action.nth !== undefined && action.nth !== 0 ? `, { nth: ${action.nth} }` : ''
-      return `  await ${pageKey}.uncheck('${elementKey}'${optsStr});`
+      return `  await ${pageKey}.uncheck('${safeKey}'${optsStr});`
     }
     case 'fill': {
       const locatorExpr = getLocatorExpression()
@@ -1024,7 +1051,7 @@ export function formatActionCall(
         return `  await ${locatorExpr}.fill('${action.text.replace(/'/g, "\\'")}');`
       }
       const optsStr = action.nth !== undefined && action.nth !== 0 ? `, { nth: ${action.nth} }` : ''
-      return `  await ${pageKey}.fill('${elementKey}', '${action.text.replace(/'/g, "\\'")}'${optsStr});`
+      return `  await ${pageKey}.fill('${safeKey}', '${action.text.replace(/'/g, "\\'")}'${optsStr});`
     }
     case 'setInputFiles': {
       const locatorExpr = getLocatorExpression()
@@ -1032,7 +1059,7 @@ export function formatActionCall(
         return `  await ${locatorExpr}.setInputFiles(${JSON.stringify(action.files)});`
       }
       const optsStr = action.nth !== undefined && action.nth !== 0 ? `, { nth: ${action.nth} }` : ''
-      return `  await ${pageKey}.setInputFiles('${elementKey}', ${JSON.stringify(action.files)}${optsStr});`
+      return `  await ${pageKey}.setInputFiles('${safeKey}', ${JSON.stringify(action.files)}${optsStr});`
     }
     case 'press': {
       const modifiers = Array.isArray(action.modifiers) ? action.modifiers : []
@@ -1042,7 +1069,7 @@ export function formatActionCall(
         return `  await ${locatorExpr}.press('${shortcut}');`
       }
       const optsStr = action.nth !== undefined && action.nth !== 0 ? `, { nth: ${action.nth} }` : ''
-      return `  await ${pageKey}.press('${elementKey}', '${shortcut}'${optsStr});`
+      return `  await ${pageKey}.press('${safeKey}', '${shortcut}'${optsStr});`
     }
     case 'navigate':
       return `  await ${pageKey}.goto();`
@@ -1052,7 +1079,7 @@ export function formatActionCall(
         return `  await ${locatorExpr}.selectOption(${JSON.stringify(action.options)});`
       }
       const optsStr = action.nth !== undefined && action.nth !== 0 ? `, { nth: ${action.nth} }` : ''
-      return `  await ${pageKey}.selectOption('${elementKey}', ${JSON.stringify(action.options)}${optsStr});`
+      return `  await ${pageKey}.selectOption('${safeKey}', ${JSON.stringify(action.options)}${optsStr});`
     }
     case 'assertText': {
       const locatorExpr = getLocatorExpression()
@@ -1062,7 +1089,7 @@ export function formatActionCall(
       const opts = []
       if (action.nth !== undefined && action.nth !== 0) opts.push(`nth: ${action.nth}`)
       const optsStr = opts.length ? `, { ${opts.join(', ')} }` : ''
-      return `  await ${pageKey}.verify('${elementKey}'${optsStr}).${action.substring ? 'toContainText' : 'toHaveText'}('${action.text.replace(/'/g, "\\'")}');`
+      return `  await ${pageKey}.verify('${safeKey}'${optsStr}).${action.substring ? 'toContainText' : 'toHaveText'}('${action.text.replace(/'/g, "\\'")}');`
     }
     case 'assertChecked': {
       const locatorExpr = getLocatorExpression()
@@ -1072,7 +1099,7 @@ export function formatActionCall(
       const opts = []
       if (action.nth !== undefined && action.nth !== 0) opts.push(`nth: ${action.nth}`)
       const optsStr = opts.length ? `, { ${opts.join(', ')} }` : ''
-      return `  await ${pageKey}.verify('${elementKey}'${optsStr})${action.checked ? '' : '.not'}.toBeChecked();`
+      return `  await ${pageKey}.verify('${safeKey}'${optsStr})${action.checked ? '' : '.not'}.toBeChecked();`
     }
     case 'assertVisible': {
       const locatorExpr = getLocatorExpression()
@@ -1082,7 +1109,7 @@ export function formatActionCall(
       const opts = []
       if (action.nth !== undefined && action.nth !== 0) opts.push(`nth: ${action.nth}`)
       const optsStr = opts.length ? `, { ${opts.join(', ')} }` : ''
-      return `  await ${pageKey}.verify('${elementKey}'${optsStr});`
+      return `  await ${pageKey}.verify('${safeKey}'${optsStr});`
     }
     case 'assertValue': {
       const locatorExpr = getLocatorExpression()
@@ -1094,7 +1121,7 @@ export function formatActionCall(
       if (action.nth !== undefined && action.nth !== 0) opts.push(`nth: ${action.nth}`)
       const optsStr = opts.length ? `, { ${opts.join(', ')} }` : ''
       const assertion = action.value ? `toHaveValue('${action.value.replace(/'/g, "\\'")}')` : `toBeEmpty()`
-      return `  await ${pageKey}.verify('${elementKey}'${optsStr}).${assertion};`
+      return `  await ${pageKey}.verify('${safeKey}'${optsStr}).${assertion};`
     }
     case 'assertSnapshot': {
       const locatorExpr = getLocatorExpression()
@@ -1104,7 +1131,7 @@ export function formatActionCall(
       const opts = []
       if (action.nth !== undefined && action.nth !== 0) opts.push(`nth: ${action.nth}`)
       const optsStr = opts.length ? `, { ${opts.join(', ')} }` : ''
-      return `  await ${pageKey}.verify('${elementKey}'${optsStr}).toMatchAriaSnapshot(\`\n${action.ariaSnapshot}\`);`
+      return `  await ${pageKey}.verify('${safeKey}'${optsStr}).toMatchAriaSnapshot(\`\n${action.ariaSnapshot}\`);`
     }
     default:
       return `  // Unsupported action: ${action.name} on ${elementKey}`

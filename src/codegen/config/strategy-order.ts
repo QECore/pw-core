@@ -7,6 +7,8 @@ export const STRATEGY_ORDER = [
   'role',
   'label',
   'placeholder',
+  'altText',
+  'title',
   'text',
   'css',
   'xpath'

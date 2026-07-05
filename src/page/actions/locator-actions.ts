@@ -27,10 +27,12 @@ export function executeAction(
   }
 
   const isCount = prop === 'count'
+  const userOptions = optionsIndex !== -1 && methodArgs.length > optionsIndex ? methodArgs[optionsIndex] : undefined
   const locator = resolveLocatorFn(locatorKey, {
     nth: optNth,
     hasText: optHasText,
-    raw: isCount
+    raw: isCount,
+    ...userOptions
   })
   const method = (locator as any)[prop]
   if (typeof method !== 'function') {
@@ -39,6 +41,14 @@ export function executeAction(
 
   if (prop === 'dragTo' && methodArgs.length > 0) {
     methodArgs[0] = resolveLocatorFn(methodArgs[0])
+  }
+
+  if (optionsIndex !== -1 && methodArgs.length > optionsIndex) {
+    const opts = methodArgs[optionsIndex]
+    if (opts && typeof opts === 'object') {
+      const { exact, checked, disabled, expanded, includeHidden, level, pressed, selected, ...rest } = opts
+      methodArgs[optionsIndex] = rest
+    }
   }
 
   if (timeout !== undefined) {

@@ -15,6 +15,7 @@ import {
 } from './codegen'
 import { FloatingPanelManager } from './codegen/floating-panel'
 import { HoverTrackerManager } from './codegen/hover-tracker'
+import { normalizeActionName } from './codegen/generator/action.validator'
 
 function extractNthFromSelector(selector: string): {
   baseSelector: string
@@ -443,6 +444,7 @@ ${recordedSteps.map((s) => s.code).join('\n')}
     actionAdded: async (page: any, data: any, code: any) => {
       enqueueAction(async () => {
         const action = data.action
+        action.name = await normalizeActionName(page, action.selector, action.name)
         console.log('DEBUG [cli]: eventSink.actionAdded called for action:', action.name, 'selector:', action.selector)
         if (action.name === 'openPage' || action.name === 'closePage') return
         if (action.selector) {
@@ -486,8 +488,7 @@ ${recordedSteps.map((s) => s.code).join('\n')}
         let elementKey = 'element'
         let actionNth: number | undefined = undefined
         let matchResult: any = null
-        let isText = false
-        let textVal = ''
+
         if (action.selector) {
           let selectorToUse = action.selector
           const smartLocator = await generateSmartLocator(page, action.selector)
@@ -509,36 +510,32 @@ ${recordedSteps.map((s) => s.code).join('\n')}
             action.nth = actionNth
           }
 
-          const textMatch = selectorToUse.match(/^(?:text|internal:text)=["']?([^"']+)["']?i?$/)
-          if (textMatch) {
-            isText = true
-            textVal = textMatch[1]
-          }
+          matchResult = findElementKey(selectorToUse, pageKey, registryObj, overrideMode, {
+            targetTestId: (smartLocator as any)?.targetTestId,
+            targetId: (smartLocator as any)?.targetId,
+            targetParentId: (smartLocator as any)?.targetParentId,
+            overrideType: (action.name === 'check' || action.name === 'uncheck') ? 'checkbox' : undefined
+          })
+          pageKey = matchResult.pageKey
+          elementKey = matchResult.elementKey
 
-          if (!isText) {
-            matchResult = findElementKey(selectorToUse, pageKey, registryObj, overrideMode, {
-              targetTestId: (smartLocator as any)?.targetTestId,
-              targetId: (smartLocator as any)?.targetId,
-              targetParentId: (smartLocator as any)?.targetParentId
-            })
-            pageKey = matchResult.pageKey
-            elementKey = matchResult.elementKey
-
-            // Use context-aware generatedKey if it produced a better name and the match is new
-            if (matchResult.isNew && smartLocator?.generatedKey && smartLocator.generatedKey.length > 2) {
-              const proposedKey = smartLocator.generatedKey
-              const existingKeys = new Set([
-                ...Object.keys(registryObj[pageKey]?.testIds || {}),
-                ...Object.keys(registryObj[pageKey]?.selectors || {})
-              ])
-              if (!existingKeys.has(proposedKey)) {
-                elementKey = proposedKey
-              }
+          // Use context-aware generatedKey if it produced a better name and the match is new
+          // Only for key-based strategies (testId/selector); array strategies must keep original text
+          if (matchResult.isNew && (matchResult.type === 'testId' || matchResult.type === 'selector') && smartLocator?.generatedKey && smartLocator.generatedKey.length > 2) {
+            const proposedKey = smartLocator.generatedKey
+            const existingKeys = new Set([
+              ...Object.keys(registryObj[pageKey]?.testId || {}),
+              ...Object.keys(registryObj[pageKey]?.testIds || {}),
+              ...Object.keys(registryObj[pageKey]?.selector || {}),
+              ...Object.keys(registryObj[pageKey]?.selectors || {})
+            ])
+            if (!existingKeys.has(proposedKey)) {
+              elementKey = proposedKey
             }
           }
         }
 
-        const actionSignature = `${pageKey}.${isText ? 'page.getByText(' + textVal + ')' : elementKey}.${action.name}.${action.text || action.key || action.value || ''}.${action.nth ?? ''}`
+        const actionSignature = `${pageKey}.${elementKey}.${action.name}.${action.text || action.key || action.value || ''}.${action.nth ?? ''}`
         const now = Date.now()
         const threshold = action.name === 'click' ? 1200 : 500
         if (actionSignature === lastActionSignature && now - lastActionTime < threshold) {
@@ -549,7 +546,7 @@ ${recordedSteps.map((s) => s.code).join('\n')}
         lastActionTime = now
 
         usedPageKeys.add(pageKey)
-        const generatedCode = formatActionCall(pageKey, elementKey, action, isText, textVal)
+        const generatedCode = formatActionCall(pageKey, elementKey, action)
         console.log('DEBUG [cli]: generatedCode:', generatedCode)
         recordedSteps.push({ pageKey, code: generatedCode })
 
@@ -563,11 +560,26 @@ ${recordedSteps.map((s) => s.code).join('\n')}
             registryObj[pageKey] = { url: pathname }
           }
           if (matchResult.type === 'testId') {
-            if (!registryObj[pageKey].testIds) registryObj[pageKey].testIds = {}
-            registryObj[pageKey].testIds[elementKey] = matchResult.val
+            if (registryObj[pageKey].testIds) {
+              registryObj[pageKey].testIds[elementKey] = matchResult.val
+            } else {
+              if (!registryObj[pageKey].testId) registryObj[pageKey].testId = {}
+              registryObj[pageKey].testId[elementKey] = matchResult.val
+            }
+          } else if (matchResult.type === 'selector') {
+            if (registryObj[pageKey].selectors) {
+              registryObj[pageKey].selectors[elementKey] = matchResult.val
+            } else {
+              if (!registryObj[pageKey].selector) registryObj[pageKey].selector = {}
+              registryObj[pageKey].selector[elementKey] = matchResult.val
+            }
           } else {
-            if (!registryObj[pageKey].selectors) registryObj[pageKey].selectors = {}
-            registryObj[pageKey].selectors[elementKey] = matchResult.val
+            if (!registryObj[pageKey][matchResult.type]) {
+              registryObj[pageKey][matchResult.type] = []
+            }
+            if (!registryObj[pageKey][matchResult.type].includes(matchResult.val)) {
+              registryObj[pageKey][matchResult.type].push(matchResult.val)
+            }
           }
           const keyReplacements = writeRegistry(registryFilePath, registryObj, overrideMode, usedPageKeys)
           applyReplacements(keyReplacements)
@@ -580,6 +592,7 @@ ${recordedSteps.map((s) => s.code).join('\n')}
     actionUpdated: async (page: any, data: any, code: any) => {
       enqueueAction(async () => {
         const action = data.action
+        action.name = await normalizeActionName(page, action.selector, action.name)
         console.log(
           'DEBUG [cli]: eventSink.actionUpdated called for action:',
           action.name,
@@ -626,8 +639,7 @@ ${recordedSteps.map((s) => s.code).join('\n')}
         }
         let elementKey = 'element'
         let actionNth: number | undefined = undefined
-        let isText = false
-        let textVal = ''
+
         if (action.selector) {
           let selectorToUse = action.selector
           const smartLocator = await generateSmartLocator(page, action.selector)
@@ -642,28 +654,21 @@ ${recordedSteps.map((s) => s.code).join('\n')}
             action.nth = actionNth
           }
 
-          const textMatch = selectorToUse.match(/^(?:text|internal:text)=["']?([^"']+)["']?i?$/)
-          if (textMatch) {
-            isText = true
-            textVal = textMatch[1]
-          }
-
-          if (!isText) {
-            const matchResult = findElementKey(selectorToUse, pageKey, registryObj, overrideMode, {
-              targetTestId: (smartLocator as any)?.targetTestId,
-              targetId: (smartLocator as any)?.targetId,
-              targetParentId: (smartLocator as any)?.targetParentId
-            })
-            pageKey = matchResult.pageKey
-            elementKey = matchResult.elementKey
-          }
+          const matchResult = findElementKey(selectorToUse, pageKey, registryObj, overrideMode, {
+            targetTestId: (smartLocator as any)?.targetTestId,
+            targetId: (smartLocator as any)?.targetId,
+            targetParentId: (smartLocator as any)?.targetParentId,
+            overrideType: (action.name === 'check' || action.name === 'uncheck') ? 'checkbox' : undefined
+          })
+          pageKey = matchResult.pageKey
+          elementKey = matchResult.elementKey
         }
 
         usedPageKeys.add(pageKey)
-        const generatedCode = formatActionCall(pageKey, elementKey, action, isText, textVal)
+        const generatedCode = formatActionCall(pageKey, elementKey, action)
         console.log('DEBUG [cli]: generatedCode updated:', generatedCode)
 
-        lastActionSignature = `${pageKey}.${isText ? 'page.getByText(' + textVal + ')' : elementKey}.${action.name}.${action.text || action.key || action.value || ''}.${action.nth ?? ''}`
+        lastActionSignature = `${pageKey}.${elementKey}.${action.name}.${action.text || action.key || action.value || ''}.${action.nth ?? ''}`
         lastActionTime = Date.now()
 
         if (recordedSteps.length > 0) {
@@ -704,24 +709,13 @@ ${recordedSteps.map((s) => s.code).join('\n')}
           hoverAction.nth = parsed.nth
         }
 
-        let isText = false
-        let textVal = ''
-        const textMatch = selectorToUse.match(/^(?:text|internal:text)=["']?([^"']+)["']?i?$/)
-        if (textMatch) {
-          isText = true
-          textVal = textMatch[1]
-        }
+        const matchResult = findElementKey(selectorToUse, pageKey, registryObj, overrideMode)
+        pageKey = matchResult.pageKey
+        elementKey = matchResult.elementKey
 
-        let matchResult: any = null
-        if (!isText) {
-          matchResult = findElementKey(selectorToUse, pageKey, registryObj, overrideMode)
-          pageKey = matchResult.pageKey
-          elementKey = matchResult.elementKey
-        }
+        const generatedCode = formatActionCall(pageKey, elementKey, hoverAction)
 
-        const generatedCode = formatActionCall(pageKey, elementKey, hoverAction, isText, textVal)
-
-        const actionSignature = `${pageKey}.${isText ? 'page.getByText(' + textVal + ')' : elementKey}.hover..${hoverAction.nth ?? ''}`
+        const actionSignature = `${pageKey}.${elementKey}.hover..${hoverAction.nth ?? ''}`
         const now = Date.now()
         if (actionSignature === lastActionSignature && now - lastActionTime < 800) {
           return
@@ -743,11 +737,26 @@ ${recordedSteps.map((s) => s.code).join('\n')}
             registryObj[pageKey] = { url: pathname }
           }
           if (matchResult.type === 'testId') {
-            if (!registryObj[pageKey].testIds) registryObj[pageKey].testIds = {}
-            registryObj[pageKey].testIds[elementKey] = matchResult.val
+            if (registryObj[pageKey].testIds) {
+              registryObj[pageKey].testIds[elementKey] = matchResult.val
+            } else {
+              if (!registryObj[pageKey].testId) registryObj[pageKey].testId = {}
+              registryObj[pageKey].testId[elementKey] = matchResult.val
+            }
+          } else if (matchResult.type === 'selector') {
+            if (registryObj[pageKey].selectors) {
+              registryObj[pageKey].selectors[elementKey] = matchResult.val
+            } else {
+              if (!registryObj[pageKey].selector) registryObj[pageKey].selector = {}
+              registryObj[pageKey].selector[elementKey] = matchResult.val
+            }
           } else {
-            if (!registryObj[pageKey].selectors) registryObj[pageKey].selectors = {}
-            registryObj[pageKey].selectors[elementKey] = matchResult.val
+            if (!registryObj[pageKey][matchResult.type]) {
+              registryObj[pageKey][matchResult.type] = []
+            }
+            if (!registryObj[pageKey][matchResult.type].includes(matchResult.val)) {
+              registryObj[pageKey][matchResult.type].push(matchResult.val)
+            }
           }
           const keyReplacements = writeRegistry(registryFilePath, registryObj, overrideMode, usedPageKeys)
           applyReplacements(keyReplacements)

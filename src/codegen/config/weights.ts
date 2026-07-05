@@ -6,7 +6,9 @@ export const LOCATOR_WEIGHTS = {
   className: 60,
   role: 50,
   label: 40,
-  placeholder: 30,
+  placeholder: 35,
+  altText: 33,
+  title: 32,
   text: 20,
   css: 10,
   xpath: 1
