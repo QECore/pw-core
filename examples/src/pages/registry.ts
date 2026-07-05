@@ -1,73 +1,52 @@
 import { createPageRegistry } from 'pw-core/page';
 
-// Initialize registry (mostly automatic, defining base configs as siblings)
 export const registry = createPageRegistry({
-  loginPage: {
-    url: '/login',
-    testIds: {
-      defaultUserLogin: 'login-default-user',
-      email: 'email-input',
-      password: 'password-input',
-      submit: 'login-submit',
-    }
-  },
-  dashboardPage: {
-    url: '/app',
+
+  pwCore: {
+    url: '/pw-core',
     selectors: {
-      heading: 'h1:has-text("Dashboard")',
-    },
-  },
-  projectsPage: {
-    url: '/app/projects',
-    testIds: {
-      newProject: 'new-project-button',
-      table: 'projects-table',
-      "form{item}": {
-        item: ['title', 'description', 'save'],
-        testId: "form-item"
+      '{item}': {
+        item: ['why-pw-core', 'registry', 'typed-page', 'features'],
+        selector: '[data-parent-id="{item}"]'
       }
     }
   },
-  tasksPage: {
-    url: '/app/tasks',
+  workspace: {
+    url: '/workspace',
     testIds: {
-      newTask: 'new-task-button',
-      table: 'tasks-table',
-      "form{item}": {
-        item: ['title', 'description', 'save'],
-        testId: "form-item"
-      }
-    },
-  },
-  sidebar: {
-    testIds: {
-      itemProjects: 'sidebar-projects',
-      itemTasks: 'sidebar-tasks',
-    },
-  },
-  topNav: {
-    testIds: {
-      workspaceDropdown: 'active-workspace-btn',
-      logoutBtn: 'ws-option-logout',
-    },
+      'QA-WorkspaceBtn': 'active-workspace-btn'
+    }
   },
   playground: {
     url: '/playground',
     testIds: {
-      // Dynamic testIds: Keys converted to camelCase (e.g. activeLineChart), values kebab-cased (e.g. "active-line-chart")
-      "{status}{id}Chart": {
-        id: ['line', 'bar'],
-        status: ['active', 'inactive'],
-        testId: "status-id-chart"
-      }
+      'otp-input': 'otp-input',
+      'tabTrigger{item}': {
+        item: ['charts', 'tables', 'inputs', 'buttons', 'overlays', 'advanced'],
+        testId: 'tab-trigger-item'
+      },
+      wsPlayground: 'ws-option-playground'
+    }
+  },
+  swagger: {
+    url: '/swagger',
+    testIds: {
+      'swaggerEndpointGetApiApp{item}': {
+        item: ['activity', 'projects'],
+        testId: 'swagger-endpoint-get--api-app-item'
+      },
+      'swaggerExecuteGetApiApp{item}': {
+        item: ['activity', 'projects'],
+        testId: 'swagger-execute-get--api-app-item'
+      },
+      'swaggerTab{item}': {
+        item: ['models', 'endpoints'],
+        testId: 'swagger-tab-item'
+      },
+      wsSwagger: 'ws-option-swagger'
     },
     selectors: {
-      card: ".skeu-card",
-      // Dynamic selectors: Keys camelCased (e.g. safe, danger), values preserve original casing (e.g. "#Safe", "#Danger")
-      "{status}": {
-        status: ['Safe', 'Danger'],
-        selector: "#status"
-      },
+      codeBlockInset: '.code-block-inset'
     }
   }
 });

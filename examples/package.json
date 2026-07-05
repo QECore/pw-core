@@ -6,7 +6,11 @@
     "test": "playwright test",
     "test:headed": "playwright test --headed",
     "test:report": "playwright show-report",
-    "test:ui": "playwright test --ui"
+    "test:ui": "playwright test --ui",
+    "codegen": "npx pw-core codegen",
+    "codegen:override": "npx pw-core codegen --override",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix"
   },
   "author": {
     "name": "Shanmuka Chandra Teja Anem",
@@ -14,10 +18,14 @@
   },
   "license": "MIT",
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.61.0",
+    "@stylistic/eslint-plugin": "^5.10.0",
     "@types/node": "^20.11.0",
     "dotenv": "^16.4.5",
+    "eslint": "^10.6.0",
     "pw-core": "file:..",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.62.1"
   }
 }

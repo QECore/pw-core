@@ -1,9 +1,13 @@
-import { Page, expect as playwrightExpect, test } from '@playwright/test';
+import { Page, expect as playwrightExpect, test } from '@playwright/test'
 
-type GotoOptions = { referrer?: string; timeout?: number; waitUntil?: 'load' | 'domcontentloaded' | 'networkidle' | 'commit' };
-type ToHaveURLOptions = Parameters<ReturnType<typeof playwrightExpect<Page>>['toHaveURL']>[1];
-type ToHaveTitleOptions = Parameters<ReturnType<typeof playwrightExpect<Page>>['toHaveTitle']>[1];
-type StepLocation = { file: string; line: number; column: number };
+type GotoOptions = {
+  referrer?: string
+  timeout?: number
+  waitUntil?: 'load' | 'domcontentloaded' | 'networkidle' | 'commit'
+}
+type ToHaveURLOptions = Parameters<ReturnType<typeof playwrightExpect<Page>>['toHaveURL']>[1]
+type ToHaveTitleOptions = Parameters<ReturnType<typeof playwrightExpect<Page>>['toHaveTitle']>[1]
+type StepLocation = { file: string; line: number; column: number }
 
 function resolveUrlPattern(
   url: string | undefined,
@@ -11,26 +15,26 @@ function resolveUrlPattern(
   urlOrOptions?: string | RegExp | ToHaveURLOptions,
   options?: ToHaveURLOptions
 ): { targetUrl: string | RegExp; actualOptions: ToHaveURLOptions | undefined } {
-  let targetUrl: string | RegExp;
-  let actualOptions = options;
+  let targetUrl: string | RegExp
+  let actualOptions = options
 
   if (urlOrOptions !== undefined && (typeof urlOrOptions === 'string' || urlOrOptions instanceof RegExp)) {
     if (typeof urlOrOptions === 'string') {
-      targetUrl = new RegExp('.*' + urlOrOptions.replace('/#', ''));
+      targetUrl = new RegExp('.*' + urlOrOptions.replace('/#', ''))
     } else {
-      targetUrl = urlOrOptions;
+      targetUrl = urlOrOptions
     }
   } else {
     if (!url) {
-      throw new Error(`URL is not defined on ${constructorName}`);
+      throw new Error(`URL is not defined on ${constructorName}`)
     }
-    targetUrl = new RegExp('.*' + url.replace('/#', ''));
+    targetUrl = new RegExp('.*' + url.replace('/#', ''))
     if (typeof urlOrOptions === 'object') {
-      actualOptions = urlOrOptions;
+      actualOptions = urlOrOptions
     }
   }
 
-  return { targetUrl, actualOptions };
+  return { targetUrl, actualOptions }
 }
 
 /**
@@ -44,12 +48,16 @@ export async function goto(
   options?: GotoOptions,
   location?: StepLocation
 ): Promise<void> {
-  await test.step(`Goto "${url || ''}"`, async () => {
-    if (!url) {
-      throw new Error(`URL is not defined on ${constructorName}`);
-    }
-    await page.goto(url, options);
-  }, { box: true, location });
+  await test.step(
+    `Goto "${url || ''}"`,
+    async () => {
+      if (!url) {
+        throw new Error(`URL is not defined on ${constructorName}`)
+      }
+      await page.goto(url, options)
+    },
+    { box: true, location }
+  )
 }
 
 /**
@@ -64,11 +72,15 @@ export async function verifyURL(
   options?: ToHaveURLOptions,
   location?: StepLocation
 ): Promise<void> {
-  const { targetUrl, actualOptions } = resolveUrlPattern(url, constructorName, urlOrOptions, options);
-  const stepName = `Verify URL matches "${targetUrl.toString()}"`;
-  await test.step(stepName, async () => {
-    await playwrightExpect(page).toHaveURL(targetUrl, actualOptions);
-  }, { box: true, location });
+  const { targetUrl, actualOptions } = resolveUrlPattern(url, constructorName, urlOrOptions, options)
+  const stepName = `Verify URL matches "${targetUrl.toString()}"`
+  await test.step(
+    stepName,
+    async () => {
+      await playwrightExpect(page).toHaveURL(targetUrl, actualOptions)
+    },
+    { box: true, location }
+  )
 }
 
 /**
@@ -81,10 +93,14 @@ export async function verifyTitle(
   options?: ToHaveTitleOptions,
   location?: StepLocation
 ): Promise<void> {
-  const stepName = `Verify title matches "${title}"`;
-  await test.step(stepName, async () => {
-    await playwrightExpect(page).toHaveTitle(title, options);
-  }, { box: true, location });
+  const stepName = `Verify title matches "${title}"`
+  await test.step(
+    stepName,
+    async () => {
+      await playwrightExpect(page).toHaveTitle(title, options)
+    },
+    { box: true, location }
+  )
 }
 
 /**
@@ -96,9 +112,13 @@ export async function reload(
   options?: Parameters<Page['reload']>[0],
   location?: StepLocation
 ): Promise<void> {
-  await test.step('Reload page', async () => {
-    await page.reload(options);
-  }, { box: true, location });
+  await test.step(
+    'Reload page',
+    async () => {
+      await page.reload(options)
+    },
+    { box: true, location }
+  )
 }
 
 /**
@@ -111,10 +131,14 @@ export async function waitForLoadState(
   options?: Parameters<Page['waitForLoadState']>[1],
   location?: StepLocation
 ): Promise<void> {
-  const stepName = `Wait for load state "${state ?? 'load'}"`;
-  await test.step(stepName, async () => {
-    await page.waitForLoadState(state, options);
-  }, { box: true, location });
+  const stepName = `Wait for load state "${state ?? 'load'}"`
+  await test.step(
+    stepName,
+    async () => {
+      await page.waitForLoadState(state, options)
+    },
+    { box: true, location }
+  )
 }
 
 /**
@@ -129,23 +153,27 @@ export async function waitForURL(
   options?: Parameters<Page['waitForURL']>[1],
   location?: StepLocation
 ): Promise<void> {
-  let targetUrl: string | RegExp;
-  let actualOptions = options;
+  let targetUrl: string | RegExp
+  let actualOptions = options
 
   if (urlOrOptions !== undefined && (typeof urlOrOptions === 'string' || urlOrOptions instanceof RegExp)) {
-    targetUrl = urlOrOptions;
+    targetUrl = urlOrOptions
   } else {
     if (!url) {
-      throw new Error(`URL is not defined on ${constructorName}`);
+      throw new Error(`URL is not defined on ${constructorName}`)
     }
-    targetUrl = url;
+    targetUrl = url
     if (typeof urlOrOptions === 'object') {
-      actualOptions = urlOrOptions;
+      actualOptions = urlOrOptions
     }
   }
 
-  const stepName = `Wait for URL "${targetUrl.toString()}"`;
-  await test.step(stepName, async () => {
-    await page.waitForURL(targetUrl, actualOptions);
-  }, { box: true, location });
+  const stepName = `Wait for URL "${targetUrl.toString()}"`
+  await test.step(
+    stepName,
+    async () => {
+      await page.waitForURL(targetUrl, actualOptions)
+    },
+    { box: true, location }
+  )
 }

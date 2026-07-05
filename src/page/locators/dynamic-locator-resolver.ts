@@ -31,20 +31,20 @@
  * Every other property is a placeholder name mapped to its list of allowed values.
  */
 export type DynamicTestIdEntry = {
-  testId?: string;
-  [placeholder: string]: string | readonly string[] | undefined;
-};
+  testId?: string
+  [placeholder: string]: string | readonly string[] | undefined
+}
 
 export type DynamicSelectorEntry = {
-  selector?: string;
-  [placeholder: string]: string | readonly string[] | undefined;
-};
+  selector?: string
+  [placeholder: string]: string | readonly string[] | undefined
+}
 
-export type DynamicLocatorEntry = DynamicTestIdEntry | DynamicSelectorEntry;
+export type DynamicLocatorEntry = DynamicTestIdEntry | DynamicSelectorEntry
 
 /** Returns true when `key` contains at least one `{…}` placeholder. */
 export function isDynamicKey(key: string): boolean {
-  return /\{[^}]+\}/.test(key);
+  return /\{[^}]+\}/.test(key)
 }
 
 /**
@@ -52,7 +52,7 @@ export function isDynamicKey(key: string): boolean {
  * @internal
  */
 function capitalize(value: string): string {
-  return value.charAt(0).toUpperCase() + value.slice(1);
+  return value.charAt(0).toUpperCase() + value.slice(1)
 }
 
 /**
@@ -62,11 +62,8 @@ function capitalize(value: string): string {
  * @internal
  */
 function cartesianProduct(arrays: readonly (readonly string[])[]): string[][] {
-  if (arrays.length === 0) return [[]];
-  return arrays.reduce<string[][]>(
-    (acc, arr) => acc.flatMap(combo => arr.map(val => [...combo, val])),
-    [[]]
-  );
+  if (arrays.length === 0) return [[]]
+  return arrays.reduce<string[][]>((acc, arr) => acc.flatMap((combo) => arr.map((val) => [...combo, val])), [[]])
 }
 
 /**
@@ -74,13 +71,13 @@ function cartesianProduct(arrays: readonly (readonly string[])[]): string[][] {
  * @internal
  */
 function extractPlaceholders(pattern: string): string[] {
-  const names: string[] = [];
-  const re = /\{([^}]+)\}/g;
-  let m: RegExpExecArray | null;
+  const names: string[] = []
+  const re = /\{([^}]+)\}/g
+  let m: RegExpExecArray | null
   while ((m = re.exec(pattern)) !== null) {
-    names.push(m[1]);
+    names.push(m[1])
   }
-  return names;
+  return names
 }
 
 /**
@@ -88,139 +85,148 @@ function extractPlaceholders(pattern: string): string[] {
  * Validates the entry at runtime before expansion.
  * @internal
  */
-function expandSingleDynamic(
-  pattern: string,
-  entry: DynamicLocatorEntry
-): Record<string, string> {
-  const testIdPattern = entry.testId;
-  const selectorPattern = entry.selector;
-  const targetPattern = (testIdPattern !== undefined ? testIdPattern : selectorPattern) as string;
-  const targetKey = testIdPattern !== undefined ? 'testId' : 'selector';
+function expandSingleDynamic(pattern: string, entry: DynamicLocatorEntry): Record<string, string> {
+  const testIdPattern = entry.testId
+  const selectorPattern = entry.selector
+  const targetPattern = (testIdPattern !== undefined ? testIdPattern : selectorPattern) as string
+  const targetKey = testIdPattern !== undefined ? 'testId' : 'selector'
 
   if (targetPattern === undefined) {
-    throw new Error(
-      `Dynamic locator "${pattern}": entry must contain either 'testId' or 'selector' property.`
-    );
+    throw new Error(`Dynamic locator "${pattern}": entry must contain either 'testId' or 'selector' property.`)
   }
 
-  const placeholders = { ...entry } as any;
-  delete placeholders.testId;
-  delete placeholders.selector;
+  const placeholders = { ...entry } as any
+  delete placeholders.testId
+  delete placeholders.selector
 
   // ─── Validation ──────────────────────────────────────────────────────
-  const expectedNames = extractPlaceholders(pattern);
+  const expectedNames = extractPlaceholders(pattern)
 
   // 0.5. No duplicate placeholders in the pattern
-  const uniqueNames = Array.from(new Set(expectedNames));
+  const uniqueNames = Array.from(new Set(expectedNames))
   if (uniqueNames.length !== expectedNames.length) {
-    throw new Error(
-      `Dynamic locator "${pattern}": pattern has duplicate placeholders.`
-    );
+    throw new Error(`Dynamic locator "${pattern}": pattern has duplicate placeholders.`)
   }
 
   // 1. No unknown keys (only placeholder names + targetKey)
-  const actualKeys = Object.keys(placeholders);
-  const unknownKeys = actualKeys.filter(k => !expectedNames.includes(k));
+  const actualKeys = Object.keys(placeholders)
+  const unknownKeys = actualKeys.filter((k) => !expectedNames.includes(k))
   if (unknownKeys.length > 0) {
     throw new Error(
       `Dynamic locator "${pattern}": unknown key(s) [${unknownKeys.join(', ')}]. ` +
-      `Only '${targetKey}' and placeholder keys [${expectedNames.join(', ')}] are allowed.`
-    );
+        `Only '${targetKey}' and placeholder keys [${expectedNames.join(', ')}] are allowed.`
+    )
   }
 
   // 2. All placeholders from the pattern must have a key in the entry
-  const missingKeys = expectedNames.filter(name => !(name in placeholders));
+  const missingKeys = expectedNames.filter((name) => !(name in placeholders))
   if (missingKeys.length > 0) {
     throw new Error(
       `Dynamic locator "${pattern}": missing placeholder key(s) [${missingKeys.join(', ')}]. ` +
-      `You must provide values for all placeholders defined in the pattern.`
-    );
+        `You must provide values for all placeholders defined in the pattern.`
+    )
   }
 
   // 2.5. Placeholder values must be arrays
-  const nonArrayKeys = expectedNames.filter(name => !Array.isArray(placeholders[name]));
+  const nonArrayKeys = expectedNames.filter((name) => !Array.isArray(placeholders[name]))
   if (nonArrayKeys.length > 0) {
-    throw new Error(
-      `Dynamic locator "${pattern}": placeholder key(s) [${nonArrayKeys.join(', ')}] must be arrays.`
-    );
+    throw new Error(`Dynamic locator "${pattern}": placeholder key(s) [${nonArrayKeys.join(', ')}] must be arrays.`)
   }
 
   // 3. All placeholder names must appear as substrings in the target pattern value
-  const missingInPattern = expectedNames.filter(name => !targetPattern.includes(name));
+  const missingInPattern = expectedNames.filter((name) => !targetPattern.includes(name))
   if (missingInPattern.length > 0) {
     throw new Error(
       `Dynamic locator "${pattern}": ${targetKey} "${targetPattern}" does not contain ` +
-      `placeholder name(s) [${missingInPattern.join(', ')}]. ` +
-      `All placeholder names must appear in the ${targetKey} so they can be replaced at runtime.`
-    );
+        `placeholder name(s) [${missingInPattern.join(', ')}]. ` +
+        `All placeholder names must appear in the ${targetKey} so they can be replaced at runtime.`
+    )
   }
 
   // ─── Expansion ───────────────────────────────────────────────────────
 
   // Sort placeholder names longest-first to avoid substring replacement issues
-  const names = Object.keys(placeholders).sort((a, b) => b.length - a.length);
-  const values = names.map(name => {
-    const v = placeholders[name];
-    return v as string[];
-  });
+  const names = Object.keys(placeholders).sort((a, b) => b.length - a.length)
+  const values = names.map((name) => {
+    const v = placeholders[name]
+    return v as string[]
+  })
 
-  const result: Record<string, string> = {};
+  const result: Record<string, string> = {}
 
   for (const combo of cartesianProduct(values)) {
     // Build the *key* — replace {name} with Capitalize(value), then uncapitalize the first char
-    let expandedKey = pattern;
-    let expandedValue = targetPattern;
+    let expandedKey = pattern
+    let expandedValue = targetPattern
+
+    const isPurePlaceholder = pattern === `{${names[0]}}` && names.length === 1
 
     for (let i = 0; i < names.length; i++) {
-      const name = names[i];
-      const val = combo[i];
-      expandedKey = expandedKey.replace(`{${name}}`, capitalize(val));
-      expandedValue = expandedValue.replaceAll(name, targetKey === 'selector' ? val : val.toLowerCase());
+      const name = names[i]
+      const val = combo[i]
+
+      let capValue = ''
+      if (isPurePlaceholder) {
+        capValue = val
+      } else {
+        const words = val.split(/[^a-zA-Z0-9]/).filter(Boolean)
+        capValue = words.map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join('')
+      }
+      expandedKey = expandedKey.replace(`{${name}}`, capValue)
+
+      const replacement = targetKey === 'selector' ? val : val.toLowerCase()
+      expandedValue = expandedValue.replaceAll(`{${name}}`, replacement)
+      expandedValue = expandedValue.replaceAll(name, replacement)
     }
 
     // camelCase: uncapitalize the first character
-    expandedKey = expandedKey.charAt(0).toLowerCase() + expandedKey.slice(1);
+    expandedKey = expandedKey.charAt(0).toLowerCase() + expandedKey.slice(1)
 
-    result[expandedKey] = expandedValue;
+    result[expandedKey] = expandedValue
   }
 
-  return result;
+  return result
 }
 
 /**
  * Expands all dynamic entries in a `testIds` map into a flat `key → testId` map.
  * Static (string-valued) entries pass through unchanged.
  */
-export function expandDynamicLocators(
-  testIds: Record<string, string | DynamicLocatorEntry>
-): Record<string, string> {
-  const result: Record<string, string> = {};
+export function expandDynamicLocators(testIds: Record<string, string | DynamicLocatorEntry>): Record<string, string> {
+  const result: Record<string, string> = {}
 
   for (const [key, value] of Object.entries(testIds)) {
     if (typeof value === 'string') {
-      result[key] = value;
+      if (key in result) {
+        throw new Error(`Duplicate key "${key}" defined in page object configuration.`)
+      }
+      result[key] = value
     } else {
-      Object.assign(result, expandSingleDynamic(key, value));
+      const expanded = expandSingleDynamic(key, value)
+      for (const k of Object.keys(expanded)) {
+        if (k in result) {
+          throw new Error(`Duplicate key "${k}" defined in page object configuration.`)
+        }
+        result[k] = expanded[k]
+      }
     }
   }
 
-  return result;
+  return result
 }
 
 /**
  * Cached expansion — avoids re-expanding the same config on every action call.
  * @internal
  */
-const expandedCache = new WeakMap<object, Record<string, string>>();
+const expandedCache = new WeakMap<object, Record<string, string>>()
 
 /** Return the expanded (flat) testIds map, caching the result per config object. */
-export function getExpandedTestIds(
-  testIds: Record<string, string | DynamicLocatorEntry>
-): Record<string, string> {
-  let expanded = expandedCache.get(testIds);
+export function getExpandedTestIds(testIds: Record<string, string | DynamicLocatorEntry>): Record<string, string> {
+  let expanded = expandedCache.get(testIds)
   if (!expanded) {
-    expanded = expandDynamicLocators(testIds);
-    expandedCache.set(testIds, expanded);
+    expanded = expandDynamicLocators(testIds)
+    expandedCache.set(testIds, expanded)
   }
-  return expanded;
+  return expanded
 }
