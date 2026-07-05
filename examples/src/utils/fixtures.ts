@@ -1,7 +1,7 @@
-import { ProjectsPage } from '@pages/projects.page'
-import { registry } from '@pages/old_registry'
+import { registry } from '../pages/registry';
+import { PlaygroundPage } from '../pages/playground.page';
 
-// Extend registry with overridden ProjectsPage class
+// Extend base registry with overridden class
 export const scenario = registry.extend({
-  projectsPage: ProjectsPage
-})
+  playground: PlaygroundPage
+});

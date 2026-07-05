@@ -1,52 +1,65 @@
-import { createPageRegistry } from 'pw-core/page';
+import { createPageRegistry, PageConfig } from 'pw-core/page';
 
 export const registry = createPageRegistry({
-
-  pwCore: {
-    url: '/pw-core',
+  loginPage: {
+    url: '/login',
+    testIds: {
+      defaultUserLogin: 'login-default-user',
+      email: 'email-input',
+      password: 'password-input',
+      submit: 'login-submit'
+    }
+  },
+  dashboardPage: {
+    url: '/app',
     selectors: {
-      '{item}': {
-        item: ['why-pw-core', 'registry', 'typed-page', 'features'],
-        selector: '[data-parent-id="{item}"]'
+      heading: 'h1:has-text("Dashboard")'
+    }
+  },
+  projectsPage: {
+    url: '/app/projects',
+    testIds: {
+      newProject: 'new-project-button',
+      table: 'projects-table',
+      'form{item}': {
+        item: ['title', 'description', 'save'],
+        testId: 'form-item'
       }
     }
   },
-  workspace: {
-    url: '/workspace',
+  sidebar: {
     testIds: {
-      'QA-WorkspaceBtn': 'active-workspace-btn'
+      'item{page}': {
+        page: ['projects', 'tasks'],
+        testId: 'sidebar-page'
+      }
     }
   },
   playground: {
     url: '/playground',
     testIds: {
-      'otp-input': 'otp-input',
       'tabTrigger{item}': {
         item: ['charts', 'tables', 'inputs', 'buttons', 'overlays', 'advanced'],
         testId: 'tab-trigger-item'
-      },
-      wsPlayground: 'ws-option-playground'
-    }
-  },
-  swagger: {
-    url: '/swagger',
-    testIds: {
-      'swaggerEndpointGetApiApp{item}': {
-        item: ['activity', 'projects'],
-        testId: 'swagger-endpoint-get--api-app-item'
-      },
-      'swaggerExecuteGetApiApp{item}': {
-        item: ['activity', 'projects'],
-        testId: 'swagger-execute-get--api-app-item'
-      },
-      'swaggerTab{item}': {
-        item: ['models', 'endpoints'],
-        testId: 'swagger-tab-item'
-      },
-      wsSwagger: 'ws-option-swagger'
+      }
     },
     selectors: {
-      codeBlockInset: '.code-block-inset'
+      // Input elements use HTML id selectors
+      'playground{item}': {
+        item: ['text', 'password', 'number', 'switch', 'textarea', 'otp', 'select', 'toggle'],
+        selector: '#playground-{item}'
+      },
+      // Button variant elements
+      'btnVariant{item}': {
+        item: ['default', 'secondary', 'outline', 'destructive', 'ghost', 'link'],
+        selector: '#btn-variant-{item}'
+      },
+      // Toggle alignment group
+      'toggleAlign{item}': {
+        item: ['left', 'center', 'right'],
+        selector: '#toggle-align-{item}'
+      },
+      termsCheckbox: '#terms'
     }
   }
 });

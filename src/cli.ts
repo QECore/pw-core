@@ -163,8 +163,8 @@ async function main() {
   const args = process.argv.slice(2).filter((arg) => arg !== 'codegen')
   let url = ''
   let output = ''
-  const overrideMode = args.includes('--override')
-  const cleanArgs = args.filter((arg) => arg !== '--override')
+  const overrideMode = !args.includes('--safe')
+  const cleanArgs = args.filter((arg) => arg !== '--safe')
   for (let i = 0; i < cleanArgs.length; i++) {
     if (cleanArgs[i] === '--url' || cleanArgs[i] === '-u') {
       url = cleanArgs[++i]

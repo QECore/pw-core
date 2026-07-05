@@ -8,7 +8,7 @@
     "test:report": "playwright show-report",
     "test:ui": "playwright test --ui",
     "codegen": "npx pw-core codegen",
-    "codegen:override": "npx pw-core codegen --override",
+    "codegen:safe": "npx pw-core codegen --safe",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix"
   },
