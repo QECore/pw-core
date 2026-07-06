@@ -9,9 +9,15 @@
     "noEmit": true,
     "baseUrl": ".",
     "paths": {
-      "@pages/*": ["src/pages/*"],
-      "@tests/*": ["src/tests/*"],
-      "@utils/*": ["src/utils/*"]
+      "@pages/*": [
+        "src/pages/*"
+      ],
+      "@tests/*": [
+        "src/tests/*"
+      ],
+      "@utils/*": [
+        "src/utils/*"
+      ]
     }
   },
   "include": [

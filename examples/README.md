@@ -45,3 +45,18 @@ You can review or customize these settings in:
   ```bash
   npm run test:report
   ```
+
+- **Run pw-core codegen** (Interactive page object locator recorder):
+  ```bash
+  npm run codegen
+  ```
+- **Run pw-core codegen in safe mode** (Prevent modifying existing registry configurations):
+  ```bash
+  npm run codegen:safe
+  ```
+
+> [!TIP]
+> **Windows Users**: If you get a security error saying `running scripts is disabled on this system`, run this command in your PowerShell terminal to enable it:
+> ```powershell
+> Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+> ```
