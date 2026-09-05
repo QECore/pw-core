@@ -1,11 +1,13 @@
 import { Locator, expect as playwrightExpect, test } from '@playwright/test'
+import { VerifyResolver } from './verify-chain'
+import { LocatorTarget } from '../locators/resolver'
 import { formatAssertionDescription } from '../utils/formatter'
 
 type StepLocation = { file: string; line: number; column: number }
 
 export async function verifyHidden(
-  resolveLocator: (target: any, options?: { nth?: number; hasText?: string | RegExp; raw?: boolean }) => Locator,
-  target: any,
+  resolveLocator: VerifyResolver,
+  target: LocatorTarget,
   options?: Parameters<ReturnType<typeof playwrightExpect<Locator>>['toBeHidden']>[0] & {
     nth?: number
     hasText?: string | RegExp
@@ -28,8 +30,8 @@ export async function verifyHidden(
 }
 
 export async function verifyEnabled(
-  resolveLocator: (target: any, options?: { nth?: number; hasText?: string | RegExp; raw?: boolean }) => Locator,
-  target: any,
+  resolveLocator: VerifyResolver,
+  target: LocatorTarget,
   options?: Parameters<ReturnType<typeof playwrightExpect<Locator>>['toBeEnabled']>[0] & {
     nth?: number
     hasText?: string | RegExp
@@ -52,8 +54,8 @@ export async function verifyEnabled(
 }
 
 export async function verifyDisabled(
-  resolveLocator: (target: any, options?: { nth?: number; hasText?: string | RegExp; raw?: boolean }) => Locator,
-  target: any,
+  resolveLocator: VerifyResolver,
+  target: LocatorTarget,
   options?: Parameters<ReturnType<typeof playwrightExpect<Locator>>['toBeDisabled']>[0] & {
     nth?: number
     hasText?: string | RegExp

@@ -1,11 +1,26 @@
 import { Page, Locator, expect as playwrightExpect, test } from '@playwright/test'
-import { PageConfig, TypedLocators, ProxyLocatorMethods, PageKeys, ChainedKeys, ModifyOptionsForTarget, UniversalKeys, SemanticKeys } from './config'
+import {
+  PageConfig,
+  TypedLocators,
+  ProxyLocatorMethods,
+  PageKeys,
+  ChainedKeys,
+  ModifyOptionsForTarget,
+  UniversalKeys,
+  SemanticKeys
+} from './config'
 import { VerifyOptions, VerifyFn, AssertionsMethod, createVerifyChain } from './assertions/verify-chain'
 import { verifyHidden, verifyDisabled, verifyEnabled } from './assertions/verify-helpers'
 import { typedExpect } from './assertions/expect'
 import { goto, verifyURL, verifyTitle, reload, waitForLoadState, waitForURL } from './actions/page-actions'
 import { defineActionMethods } from './actions/locator-actions'
-import { defineLocators, resolveLocator, locator } from './locators/resolver'
+import {
+  defineLocators,
+  resolveLocator,
+  locator,
+  type LocatorResolutionOptions,
+  type LocatorTarget
+} from './locators/resolver'
 import { getCallerLocation } from './utils/caller-location'
 
 class TypedPageClass<T extends PageConfig> {
@@ -17,13 +32,18 @@ class TypedPageClass<T extends PageConfig> {
 
   constructor(context: Page | Locator, config: T, options?: { timeout?: number }) {
     this.context = context
-    this.page = typeof (context as any).page === 'function' ? (context as any).page() : (context as Page)
+    const hasPageFn = typeof (context as { page?: () => Page }).page === 'function'
+    this.page = hasPageFn ? (context as { page: () => Page }).page() : (context as Page)
     this.config = config
     this.url = config.url
     this.timeout = options?.timeout
 
     defineLocators(this, this.context, this.config)
-    defineActionMethods(this, this.resolveLocator.bind(this), this.timeout)
+    defineActionMethods(
+      this,
+      this.resolveTarget.bind(this),
+      this.timeout
+    )
 
     // Auto-wrap subclass methods with Playwright test.step
     const builtInMethods = new Set([
@@ -51,7 +71,7 @@ class TypedPageClass<T extends PageConfig> {
         if (desc && typeof desc.value === 'function' && !builtInMethods.has(prop) && !prop.startsWith('_')) {
           const originalFn = desc.value
           Object.defineProperty(this, prop, {
-            value: function (this: any, ...args: any[]) {
+            value: function (this: unknown, ...args: unknown[]) {
               const words = prop.split(/(?=[A-Z])/).map((w) => w.toLowerCase())
               if (words.length > 0) {
                 words[0] = words[0].charAt(0).toUpperCase() + words[0].slice(1)
@@ -83,6 +103,10 @@ class TypedPageClass<T extends PageConfig> {
       }
       proto = Object.getPrototypeOf(proto)
     }
+  }
+
+  private resolveTarget(target: LocatorTarget, options?: LocatorResolutionOptions): Locator {
+    return resolveLocator(this.context, this.config, target, options)
   }
 
   /** Navigate to the URL from page config. */
@@ -135,7 +159,7 @@ class TypedPageClass<T extends PageConfig> {
     target: Target,
     options?: ModifyOptionsForTarget<T, Target, { nth?: number; raw?: boolean; hasText?: string | RegExp }>
   ): Locator {
-    return resolveLocator(this.context, this.config, target as any, options)
+    return this.resolveTarget(target as LocatorTarget, options as LocatorResolutionOptions | undefined)
   }
 
   /** Resolve a config key to a proxied Locator with step-wrapped methods. */
@@ -143,7 +167,7 @@ class TypedPageClass<T extends PageConfig> {
     target: PageKeys<T> | Locator,
     options?: Parameters<Locator['filter']>[0] & { nth?: number }
   ): Locator {
-    return locator(this.context, this.config, target as any, options)
+    return locator(this.context, this.config, target as LocatorTarget, options)
   }
 
   /** Chain multiple locators sequentially up to depth 3. */
@@ -183,8 +207,8 @@ class TypedPageClass<T extends PageConfig> {
     options?: { nth?: number; raw?: boolean; hasText?: string | RegExp }
   ): Locator
 
-  chain(...args: any[]): Locator {
-    let options: any = undefined
+  chain(...args: unknown[]): Locator {
+    let options: LocatorResolutionOptions | undefined = undefined
     const keys: string[] = []
 
     for (const arg of args) {
@@ -195,7 +219,7 @@ class TypedPageClass<T extends PageConfig> {
           keys.push(arg)
         }
       } else if (typeof arg === 'object' && arg !== null) {
-        options = arg
+        options = arg as LocatorResolutionOptions
       }
     }
 
@@ -208,11 +232,10 @@ class TypedPageClass<T extends PageConfig> {
 
   /** Chainable assertions on config keys. Supports `.soft` for soft assertions. */
   get verify(): VerifyFn<T> & { soft: VerifyFn<T> } {
-    const fn = (target: any, opts?: VerifyOptions) =>
-      createVerifyChain(this.resolveLocator.bind(this) as any, target, opts, false)
-    ;(fn as any).soft = (target: any, opts?: VerifyOptions) =>
-      createVerifyChain(this.resolveLocator.bind(this) as any, target, opts, true)
-    return fn as any
+    const fn = ((target: PageKeys<T> | Locator, opts?: VerifyOptions) =>
+      createVerifyChain(this.resolveTarget.bind(this), target, opts, false)) as VerifyFn<T> & { soft: VerifyFn<T> }
+    fn.soft = (target, opts) => createVerifyChain(this.resolveTarget.bind(this), target, opts, true)
+    return fn
   }
 
   async verifyHidden(
@@ -222,7 +245,7 @@ class TypedPageClass<T extends PageConfig> {
       message?: string
     }
   ): Promise<void> {
-    return verifyHidden(this.resolveLocator.bind(this) as any, target as any, options, getCallerLocation())
+    return verifyHidden(this.resolveTarget.bind(this), target as LocatorTarget, options, getCallerLocation())
   }
 
   async verifyEnabled(
@@ -232,7 +255,7 @@ class TypedPageClass<T extends PageConfig> {
       message?: string
     }
   ): Promise<void> {
-    return verifyEnabled(this.resolveLocator.bind(this) as any, target as any, options, getCallerLocation())
+    return verifyEnabled(this.resolveTarget.bind(this), target as LocatorTarget, options, getCallerLocation())
   }
 
   async verifyDisabled(
@@ -242,14 +265,14 @@ class TypedPageClass<T extends PageConfig> {
       message?: string
     }
   ): Promise<void> {
-    return verifyDisabled(this.resolveLocator.bind(this) as any, target as any, options, getCallerLocation())
+    return verifyDisabled(this.resolveTarget.bind(this), target as LocatorTarget, options, getCallerLocation())
   }
 
   expect(
     target: PageKeys<T> | Locator,
     message?: string
   ): ReturnType<typeof playwrightExpect<Locator>> {
-    const resolved = typeof target !== 'string' ? (target as Locator) : this.resolveLocator(target as any)
+    const resolved = typeof target !== 'string' ? (target as Locator) : this.resolveLocator(target as PageKeys<T>)
     return typedExpect(resolved, message)
   }
 }

@@ -1,19 +1,25 @@
 import { Locator } from '@playwright/test'
 
-export function formatTarget(target: any): string {
+type Stringifiable = { toString(): string }
+
+function isStringifiable(value: unknown): value is Stringifiable {
+  return typeof value === 'object' && value !== null && typeof (value as Stringifiable).toString === 'function'
+}
+
+export function formatTarget(target: unknown): string {
   if (typeof target === 'string') return target
-  if (target && typeof target.toString === 'function') {
+  if (isStringifiable(target)) {
     return target.toString().replace(/^Locator@/, '')
   }
   return 'locator'
 }
 
-export function formatStepDescription(methodName: string, target: any, args: any[]): string {
+export function formatStepDescription(methodName: string, target: unknown, args: readonly unknown[]): string {
   const targetStr = formatTarget(target)
   if (methodName === 'fill' && args[0] !== undefined) {
     const options = args[1]
     let shouldMask = false
-    if (options && typeof options === 'object' && options.mask !== undefined) {
+    if (options && typeof options === 'object' && 'mask' in options && options.mask !== undefined) {
       shouldMask = options.mask === true
     } else {
       const targetStrLower = targetStr.toLowerCase()
@@ -36,7 +42,12 @@ export function formatStepDescription(methodName: string, target: any, args: any
   return `${formattedMethod} "${targetStr}"${cleanArgs ? ' with ' + cleanArgs : ''}`
 }
 
-export function formatAssertionDescription(target: any, matcherName: string, isNegated: boolean, args: any[]): string {
+export function formatAssertionDescription(
+  target: unknown,
+  matcherName: string,
+  isNegated: boolean,
+  args: readonly unknown[]
+): string {
   const targetStr = formatTarget(target)
   const prefix = `Verify "${targetStr}"`
   const matcherMap: Record<string, string> = {

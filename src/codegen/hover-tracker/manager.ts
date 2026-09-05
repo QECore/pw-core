@@ -17,11 +17,7 @@ export class HoverTrackerManager {
       return this.options.onRecordHover(selector)
     })
 
-    const fnStr = clientHoverTracker.toString()
-    // 2. Add client script as init script
-    await this.context.addInitScript((scriptStr) => {
-      const fn = new Function(`return ${scriptStr}`)()
-      fn()
-    }, fnStr)
+    // 2. Add client script as init script directly via Playwright
+    await this.context.addInitScript(clientHoverTracker)
   }
 }

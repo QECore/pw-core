@@ -1,23 +1,37 @@
+declare global {
+  interface Window {
+    __pwCoreRecordHover?: (selector: string) => void
+  }
+}
+
 export function clientHoverTracker() {
-  let lastHoveredElement: any = null
+  let lastHoveredElement: Element | null = null
   let hoverEntryTime = 0
-  let lastRecordedHover: any = null
+  let lastRecordedHover: Element | null = null
   let lastMutationTime = 0
 
-  const getUniqueCssSelector = (el: any): string => {
+  const recordHover = (element: Element) => {
+    const selector = getUniqueCssSelector(element)
+    if (selector && window.__pwCoreRecordHover) {
+      window.__pwCoreRecordHover(selector)
+    }
+  }
+
+  const getUniqueCssSelector = (el: Element): string => {
     if (el.getAttribute('data-testid')) {
       return `[data-testid="${el.getAttribute('data-testid')}"]`
     }
     if (el.getAttribute('data-parent-id')) {
       return `[data-parent-id="${el.getAttribute('data-parent-id')}"]`
     }
-    if (el.id) {
-      return `#${el.id}`
+    const htmlElement = el as HTMLElement
+    if (htmlElement.id) {
+      return `#${htmlElement.id}`
     }
     if (el.tagName === 'BODY') return 'body'
     let path = el.tagName.toLowerCase()
-    if (el.className) {
-      const firstClass = el.className.split(/\s+/)[0]
+    if (typeof htmlElement.className === 'string' && htmlElement.className) {
+      const firstClass = htmlElement.className.split(/\s+/)[0]
       if (firstClass && !firstClass.includes('[') && !firstClass.includes(':')) {
         path += `.${firstClass}`
       }
@@ -32,10 +46,7 @@ export function clientHoverTracker() {
       const elapsed = Date.now() - hoverEntryTime
       if (elapsed >= 150) {
         lastRecordedHover = lastHoveredElement
-        const selector = getUniqueCssSelector(lastHoveredElement)
-        if (selector && (window as any).__pwCoreRecordHover) {
-          ;(window as any).__pwCoreRecordHover(selector)
-        }
+        recordHover(lastHoveredElement)
       }
     }
   })
@@ -46,9 +57,9 @@ export function clientHoverTracker() {
     attributes: true
   })
 
-  document.addEventListener('mouseover', (e: any) => {
+  document.addEventListener('mouseover', (e: MouseEvent) => {
     const target = e.target
-    if (!target || target.closest('#pw-core-codegen-panel')) return
+    if (!(target instanceof Element) || target.closest('#pw-core-codegen-panel')) return
     const hoverTarget =
       target.closest(
         'button, a, [role="menuitem"], [role="option"], .menu-item, [data-testid], svg, path, [data-parent-id]'
@@ -64,10 +75,7 @@ export function clientHoverTracker() {
           const sinceMutation = Date.now() - lastMutationTime
           if (sinceMutation < 400) {
             lastRecordedHover = currentTarget
-            const selector = getUniqueCssSelector(currentTarget)
-            if (selector && (window as any).__pwCoreRecordHover) {
-              ;(window as any).__pwCoreRecordHover(selector)
-            }
+            recordHover(currentTarget)
           }
         }
       }, 150)

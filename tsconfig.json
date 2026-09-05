@@ -15,10 +15,7 @@
     "forceConsistentCasingInFileNames": true
   },
   "include": [
-    "src/helpers.ts",
-    "src/cli.ts",
-    "src/component/**/*.ts",
-    "src/page/**/*.ts"
+    "src/**/*.ts"
   ],
   "exclude": [
     "dist",

@@ -1,26 +1,40 @@
-export function clientInjectFloatingPanel(
-  idx: string,
-  fileName: string,
-  hasSteps: boolean,
-  cssStyle: string,
+declare global {
+  interface Window {
+    __pwCoreStartNewTest?: () => void
+    __pwCoreStartNewSerialTest?: () => void
+  }
+}
+
+export interface FloatingPanelPayload {
+  idx: string
+  fileName: string
+  hasSteps: boolean
+  cssStyle: string
   htmlContent: string
-) {
+}
+
+function safeSessionStorage(action: 'get' | 'set' | 'remove', key: string, value?: string): string | null {
+  try {
+    if (action === 'get') return sessionStorage.getItem(key)
+    if (action === 'set' && value !== undefined) sessionStorage.setItem(key, value)
+    if (action === 'remove') sessionStorage.removeItem(key)
+  } catch {}
+  return null
+}
+
+export function clientInjectFloatingPanel(payload: FloatingPanelPayload) {
+  const { idx, hasSteps, cssStyle, htmlContent } = payload
+
   if (!document.body) {
-    setTimeout(() => clientInjectFloatingPanel(idx, fileName, hasSteps, cssStyle, htmlContent), 50)
+    setTimeout(() => clientInjectFloatingPanel(payload), 50)
     return
   }
 
-  let sessionHasSteps = false
-  try {
-    sessionHasSteps = sessionStorage.getItem('pw-core-has-steps') === 'true'
-  } catch (e) {}
-
+  const sessionHasSteps = safeSessionStorage('get', 'pw-core-has-steps') === 'true'
   const effectiveHasSteps = hasSteps || sessionHasSteps
 
   if (effectiveHasSteps) {
-    try {
-      sessionStorage.setItem('pw-core-has-steps', 'true')
-    } catch (e) {}
+    safeSessionStorage('set', 'pw-core-has-steps', 'true')
   }
 
   const numEl = document.getElementById('pw-core-test-num')
@@ -138,9 +152,7 @@ export function clientInjectFloatingPanel(
   document.addEventListener('mouseup', onMouseUp)
 
   const enableButtons = () => {
-    try {
-      sessionStorage.setItem('pw-core-has-steps', 'true')
-    } catch (e) {}
+    safeSessionStorage('set', 'pw-core-has-steps', 'true')
 
     const newTestBtn = document.getElementById('pw-core-new-test-btn') as HTMLButtonElement | null
     const newSerialBtn = document.getElementById('pw-core-new-serial-btn') as HTMLButtonElement | null
@@ -223,26 +235,22 @@ export function clientInjectFloatingPanel(
     e.stopPropagation()
 
     if (btn.id === 'pw-core-new-test-btn') {
-      try {
-        sessionStorage.removeItem('pw-core-has-steps')
-      } catch (err) {}
+      safeSessionStorage('remove', 'pw-core-has-steps')
       optimisticUpdate('test')
       const trigger = () => {
-        if ((window as any).__pwCoreStartNewTest) {
-          ;(window as any).__pwCoreStartNewTest()
+        if (window.__pwCoreStartNewTest) {
+          window.__pwCoreStartNewTest()
         } else {
           setTimeout(trigger, 50)
         }
       }
       trigger()
     } else if (btn.id === 'pw-core-new-serial-btn') {
-      try {
-        sessionStorage.removeItem('pw-core-has-steps')
-      } catch (err) {}
+      safeSessionStorage('remove', 'pw-core-has-steps')
       optimisticUpdate('serial')
       const trigger = () => {
-        if ((window as any).__pwCoreStartNewSerialTest) {
-          ;(window as any).__pwCoreStartNewSerialTest()
+        if (window.__pwCoreStartNewSerialTest) {
+          window.__pwCoreStartNewSerialTest()
         } else {
           setTimeout(trigger, 50)
         }

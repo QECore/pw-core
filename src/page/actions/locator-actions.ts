@@ -1,53 +1,63 @@
 import { Locator, test } from '@playwright/test'
 import { AllowedMethodKeys, getOptionsArgumentIndex, zeroArgMethodsList, oneArgMethodsList } from '../config'
+import { LocatorResolutionOptions, LocatorTarget } from '../locators/resolver'
 import { formatStepDescription, formatTarget } from '../utils/formatter'
 import { getCallerLocation } from '../utils/caller-location'
 
+type LocatorResolver = (target: LocatorTarget, options?: LocatorResolutionOptions) => Locator
+type ActionArguments = unknown[]
+type ActionOptions = Record<string, unknown>
+type LocatorMethod = (...args: ActionArguments) => unknown
+
+function isActionOptions(value: unknown): value is ActionOptions {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function getResolutionOptions(value: unknown): Pick<LocatorResolutionOptions, 'nth' | 'hasText'> {
+  if (!isActionOptions(value)) return {}
+
+  return {
+    nth: typeof value.nth === 'number' ? value.nth : undefined,
+    hasText: typeof value.hasText === 'string' || value.hasText instanceof RegExp ? value.hasText : undefined
+  }
+}
+
+function removeLocatorStrategyOptions(options: ActionOptions): ActionOptions {
+  const { exact, checked, disabled, expanded, includeHidden, level, pressed, selected, ...playwrightOptions } = options
+  return playwrightOptions
+}
+
 export function executeAction(
   prop: AllowedMethodKeys,
-  resolveLocatorFn: (target: any, options?: { nth?: number; hasText?: string | RegExp; raw?: boolean }) => Locator,
+  resolveLocatorFn: LocatorResolver,
   timeout: number | undefined,
-  args: any[]
-): Promise<any> {
+  args: ActionArguments
+): Promise<unknown> {
   const [locatorKey, ...methodArgs] = args
 
-  let optNth: number | undefined = undefined
-  let optHasText: string | RegExp | undefined = undefined
   const optionsIndex = getOptionsArgumentIndex(prop)
-  if (optionsIndex !== -1 && methodArgs.length > optionsIndex) {
-    const opts = methodArgs[optionsIndex]
-    if (opts && typeof opts === 'object') {
-      if ('nth' in opts) {
-        optNth = opts.nth
-      }
-      if ('hasText' in opts) {
-        optHasText = opts.hasText
-      }
-    }
-  }
+  const userOptions = optionsIndex !== -1 && methodArgs.length > optionsIndex ? methodArgs[optionsIndex] : undefined
+  const resolutionOptions = getResolutionOptions(userOptions)
 
   const isCount = prop === 'count'
-  const userOptions = optionsIndex !== -1 && methodArgs.length > optionsIndex ? methodArgs[optionsIndex] : undefined
-  const locator = resolveLocatorFn(locatorKey, {
-    nth: optNth,
-    hasText: optHasText,
+  const locator = resolveLocatorFn(locatorKey as LocatorTarget, {
+    ...resolutionOptions,
     raw: isCount,
-    ...userOptions
+    ...(isActionOptions(userOptions) ? userOptions : {})
   })
-  const method = (locator as any)[prop]
+  const method = Reflect.get(locator, prop) as unknown
   if (typeof method !== 'function') {
     throw new Error(`Property '${prop}' does not exist on Locator.`)
   }
 
   if (prop === 'dragTo' && methodArgs.length > 0) {
-    methodArgs[0] = resolveLocatorFn(methodArgs[0])
+    methodArgs[0] = resolveLocatorFn(methodArgs[0] as LocatorTarget)
   }
 
   if (optionsIndex !== -1 && methodArgs.length > optionsIndex) {
     const opts = methodArgs[optionsIndex]
-    if (opts && typeof opts === 'object') {
-      const { exact, checked, disabled, expanded, includeHidden, level, pressed, selected, ...rest } = opts
-      methodArgs[optionsIndex] = rest
+    if (isActionOptions(opts)) {
+      methodArgs[optionsIndex] = removeLocatorStrategyOptions(opts)
     }
   }
 
@@ -65,7 +75,7 @@ export function executeAction(
 
   if (prop === 'fill' && methodArgs.length > 1) {
     const opts = methodArgs[1]
-    if (opts && typeof opts === 'object' && 'mask' in opts) {
+    if (isActionOptions(opts) && 'mask' in opts) {
       const { mask, ...playwrightOpts } = opts
       methodArgs[1] = playwrightOpts
     }
@@ -74,7 +84,7 @@ export function executeAction(
   let shouldMask = false
   if (prop === 'fill' && methodArgs.length > 0) {
     const opts = methodArgs[1]
-    if (opts && typeof opts === 'object' && opts.mask !== undefined) {
+    if (isActionOptions(opts) && opts.mask !== undefined) {
       shouldMask = opts.mask === true
     } else {
       const targetStr = formatTarget(locatorKey)
@@ -100,7 +110,7 @@ export function executeAction(
           }
           inputEl.dispatchEvent(new Event('input', { bubbles: true }))
           inputEl.dispatchEvent(new Event('change', { bubbles: true }))
-        }, methodArgs[0])
+        }, methodArgs[0] as string)
       },
       { box: true, location: getCallerLocation() }
     )
@@ -109,21 +119,21 @@ export function executeAction(
   return test.step(
     stepName,
     () => {
-      return method.apply(locator, methodArgs)
+      return (method as LocatorMethod).apply(locator, methodArgs)
     },
     { box: true, location: getCallerLocation() }
   )
 }
 
 export function defineActionMethods(
-  instance: any,
-  resolveLocatorFn: (target: any, options?: { nth?: number; hasText?: string | RegExp; raw?: boolean }) => Locator,
+  instance: object,
+  resolveLocatorFn: LocatorResolver,
   timeout: number | undefined
 ): void {
   const locatorMethods = [...zeroArgMethodsList, ...oneArgMethodsList]
   for (const prop of locatorMethods) {
     Object.defineProperty(instance, prop, {
-      value: (...args: any[]) => {
+      value: (...args: ActionArguments) => {
         return executeAction(prop as AllowedMethodKeys, resolveLocatorFn, timeout, args)
       },
       writable: true,

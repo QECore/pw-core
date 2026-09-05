@@ -9,6 +9,7 @@ A developer-first framework layer built on top of Playwright for creating readab
 ## Documentation
 
 - **Online Documentation**: [qecore.github.io/pw-core](https://qecore.github.io/pw-core)
+- **Architecture & Compatibility Guide**: [docs/architecture.md](./docs/architecture.md)
 - **Release Guides**: [v1.3 (Current)](./releases/v1.3.md) | [v1.2](./releases/v1.2.md) | [v1.1](./releases/v1.1.md)
 
 ---

@@ -53,14 +53,17 @@
   "scripts": {
     "build": "node -e \"const fs = require('fs'); fs.rmSync('dist', {recursive:true,force:true})\" && tsc && npm run build --prefix create-pw-core",
     "prepare": "npm run build",
-    "test": "npm run test --workspace=pw-core-demo"
+    "test": "npm run test --workspace=pw-core-demo",
+    "test:unit": "npm run build && node --test tests/unit/*.test.js",
+    "test:types": "tsc --noEmit -p tests/types/tsconfig.json",
+    "test:codegen": "npm run build && node scripts/verify-codegen.js"
   },
   "peerDependencies": {
     "@playwright/test": "^1.40.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.0",
-    "@types/node": "^20.11.0",
+    "@types/node": "^20.19.43",
     "prettier": "^3.9.4",
     "rimraf": "^6.0.1",
     "typescript": "^5.3.3"
