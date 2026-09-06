@@ -465,6 +465,7 @@ ${recordedSteps.map((s) => s.code).join('\n')}
   await hoverTracker.initialize()
 
   const page = await context.newPage()
+  await panelManager.inject(page)
 
   page.on('close', async () => {
     console.log('Page closed. Closing browser...')
@@ -486,6 +487,7 @@ ${recordedSteps.map((s) => s.code).join('\n')}
 
   if (url && typeof url === 'string') {
     await page.goto(url.startsWith('http') ? url : `http://${url}`)
+    await panelManager.inject(page)
   }
 
   await (context as RecorderContext)._enableRecorder(

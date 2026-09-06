@@ -27,7 +27,7 @@ export class FloatingPanelManager {
     })
 
     // 2. Listen for page events to automatically inject the panel
-    this.context.on('page', (p: Page) => {
+    const setupPage = (p: Page) => {
       p.on('load', () => this.inject(p))
       p.on('domcontentloaded', () => this.inject(p))
       p.on('framenavigated', (frame) => {
@@ -38,7 +38,13 @@ export class FloatingPanelManager {
           }, 200)
         }
       })
-    })
+      this.inject(p)
+    }
+
+    this.context.on('page', setupPage)
+    for (const p of this.context.pages()) {
+      setupPage(p)
+    }
   }
 
   /**
