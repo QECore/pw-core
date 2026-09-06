@@ -44,6 +44,10 @@ test('floating-panel: manager evaluate payload contract', async () => {
   await manager.inject(mockPage)
 
   assert.equal(typeof evaluatedFn, 'function')
+  assert.ok(
+    clientInjectFloatingPanel.toString().includes('function safeSessionStorage'),
+    'clientInjectFloatingPanel must enclose safeSessionStorage within its body for browser serialization'
+  )
   assert.deepEqual(evaluatedPayload, {
     idx: '2.1',
     fileName: 'dashboard.test.ts',

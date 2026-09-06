@@ -13,20 +13,20 @@ export interface FloatingPanelPayload {
   htmlContent: string
 }
 
-function safeSessionStorage(action: 'get' | 'set' | 'remove', key: string, value?: string): string | null {
-  try {
-    if (action === 'get') return sessionStorage.getItem(key)
-    if (action === 'set' && value !== undefined) sessionStorage.setItem(key, value)
-    if (action === 'remove') sessionStorage.removeItem(key)
-  } catch {}
-  return null
-}
-
 export function clientInjectFloatingPanel(payload: FloatingPanelPayload) {
+  function safeSessionStorage(action: 'get' | 'set' | 'remove', key: string, value?: string): string | null {
+    try {
+      if (action === 'get') return sessionStorage.getItem(key)
+      if (action === 'set' && value !== undefined) sessionStorage.setItem(key, value)
+      if (action === 'remove') sessionStorage.removeItem(key)
+    } catch {}
+    return null
+  }
+
   const { idx, hasSteps, cssStyle, htmlContent } = payload
 
   if (!document.body) {
-    setTimeout(() => clientInjectFloatingPanel(payload), 50)
+    window.addEventListener('DOMContentLoaded', () => clientInjectFloatingPanel(payload), { once: true })
     return
   }
 
