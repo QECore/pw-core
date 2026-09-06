@@ -91,17 +91,6 @@ function copyRecursiveSync(src: string, dest: string) {
 }
 
 async function main() {
-  console.log('\n\x1b[35m============================================\x1b[0m')
-  console.log('\x1b[35m      Initializing pw-core Test Suite      \x1b[0m')
-  console.log('\x1b[35m============================================\n\x1b[0m')
-
-  const projectPathInput = await question('Project path (default: current directory): ')
-  const targetDir = projectPathInput.trim() ? path.resolve(process.cwd(), projectPathInput.trim()) : process.cwd()
-
-  if (!fs.existsSync(targetDir)) {
-    fs.mkdirSync(targetDir, { recursive: true })
-  }
-
   // Detect paths and find templates
   const devRepoPath = path.resolve(__dirname, '../..')
   const devRepoPkgPath = path.join(devRepoPath, 'package.json')
@@ -115,7 +104,7 @@ async function main() {
     } catch (e) {}
   }
 
-  // Check for latest version on registry to bypass npx cache issues
+  // Check for latest version on registry BEFORE prompting to bypass npx cache issues
   const pkgJsonPath = path.join(__dirname, '../package.json')
   if (fs.existsSync(pkgJsonPath) && !isDevRepo) {
     try {
@@ -152,6 +141,24 @@ async function main() {
     } catch (err) {
       // Offline or network error: continue with the cached version
     }
+  }
+
+  console.log('\n\x1b[35m============================================\x1b[0m')
+  console.log('\x1b[35m      Initializing pw-core Test Suite      \x1b[0m')
+  console.log('\x1b[35m============================================\n\x1b[0m')
+
+  const cliArgs = process.argv.slice(2).filter((arg) => !arg.startsWith('-'))
+  let targetDir = ''
+  if (cliArgs.length > 0 && cliArgs[0]) {
+    targetDir = path.resolve(process.cwd(), cliArgs[0].trim())
+  } else {
+    const projectPathInput = await question('Project path (default: current directory): ')
+    const trimmed = projectPathInput.trim()
+    targetDir = trimmed ? path.resolve(process.cwd(), trimmed) : process.cwd()
+  }
+
+  if (!fs.existsSync(targetDir)) {
+    fs.mkdirSync(targetDir, { recursive: true })
   }
 
   let templatesDir = path.join(__dirname, 'templates')
