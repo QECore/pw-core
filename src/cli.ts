@@ -79,8 +79,58 @@ function registerNewElementInRegistry(
   }
 }
 
+function printHelp(): void {
+  console.log(`
+Usage: pw-core <command> [options]
+
+Commands:
+  codegen [url]         Start interactive Playwright test codegen with page registry
+
+Options:
+  -u, --url <url>       Target URL to record against
+  -o, --output <file>   Output test file path (default: <index>.recorded.test.ts)
+      --safe            Run in safe mode (append only, no existing key overrides)
+  -h, --help            Show help
+  -v, --version         Show version number
+`)
+}
+
+function printVersion(): void {
+  try {
+    const pkgPath = path.resolve(__dirname, '../package.json')
+    if (fs.existsSync(pkgPath)) {
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'))
+      console.log(`pw-core v${pkg.version}`)
+      return
+    }
+  } catch {}
+  console.log('pw-core v1.3.0')
+}
+
 async function main() {
-  const args = process.argv.slice(2).filter((arg) => arg !== 'codegen')
+  const rawArgs = process.argv.slice(2)
+
+  if (rawArgs.includes('-v') || rawArgs.includes('--version')) {
+    printVersion()
+    return
+  }
+
+  if (rawArgs.includes('-h') || rawArgs.includes('--help')) {
+    printHelp()
+    return
+  }
+
+  const command = rawArgs.find((arg) => !arg.startsWith('-'))
+
+  if (command !== 'codegen') {
+    if (command) {
+      console.error(`Unknown command: "${command}"\n`)
+    }
+    printHelp()
+    process.exit(command ? 1 : 0)
+  }
+
+  const args = rawArgs.filter((arg) => arg !== 'codegen')
   let url = ''
   let output = ''
   const overrideMode = !args.includes('--safe')

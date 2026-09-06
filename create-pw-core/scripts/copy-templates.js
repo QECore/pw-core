@@ -66,10 +66,10 @@ if (fs.existsSync(templatePkgPath)) {
     if (templatePkg.devDependencies && templatePkg.devDependencies['pw-core']) {
       templatePkg.devDependencies['pw-core'] = pwCoreVersion;
       if (templatePkg.scripts && templatePkg.scripts.codegen) {
-        templatePkg.scripts.codegen = 'pw-core';
+        templatePkg.scripts.codegen = 'npx pw-core codegen';
       }
       fs.writeFileSync(templatePkgPath, JSON.stringify(templatePkg, null, 2), 'utf8');
-      console.log(`Updated pw-core version in template package.json to: ${pwCoreVersion} and codegen script to: pw-core`);
+      console.log(`Updated pw-core version in template package.json to: ${pwCoreVersion} and codegen script to: npx pw-core codegen`);
     }
   }
 }
