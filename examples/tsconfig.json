@@ -7,16 +7,18 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "noEmit": true,
-    "baseUrl": ".",
     "paths": {
+      "src/*": [
+        "./src/*"
+      ],
       "@pages/*": [
-        "src/pages/*"
+        "./src/pages/*"
       ],
       "@tests/*": [
-        "src/tests/*"
+        "./src/tests/*"
       ],
       "@utils/*": [
-        "src/utils/*"
+        "./src/utils/*"
       ]
     }
   },

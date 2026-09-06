@@ -4,7 +4,7 @@ export const registry = createPageRegistry({
   loginPage: {
     url: '/login',
     testIds: {
-      defaultUserLogin: 'login-default-user'
+      defaultUserLogin: 'login-default-user',
     }
   },
   dashboardPage: {

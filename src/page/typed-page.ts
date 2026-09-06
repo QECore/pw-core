@@ -223,11 +223,18 @@ class TypedPageClass<T extends PageConfig> {
       }
     }
 
-    let loc = resolveLocator(this.context, this.config, keys[0], options)
-    for (let i = 1; i < keys.length; i++) {
-      loc = resolveLocator(loc, this.config, keys[i], options)
+    const [firstKey, ...remainingKeys] = keys
+    if (!firstKey) {
+      throw new Error('chain requires at least one locator key.')
     }
-    return loc
+
+    let loc = resolveLocator(this.context, this.config, firstKey, { raw: true })
+    for (let i = 0; i < remainingKeys.length; i++) {
+      const key = remainingKeys[i]
+      const isLast = i === remainingKeys.length - 1
+      loc = resolveLocator(loc, this.config, key, isLast ? options : { raw: true })
+    }
+    return remainingKeys.length > 0 ? loc : resolveLocator(this.context, this.config, firstKey, options)
   }
 
   /** Chainable assertions on config keys. Supports `.soft` for soft assertions. */
