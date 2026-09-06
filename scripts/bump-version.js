@@ -43,8 +43,16 @@ const lockPath = path.join(__dirname, '..', 'package-lock.json');
 if (fs.existsSync(lockPath)) {
   const lock = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
   lock.version = newVersion;
-  if (lock.packages && lock.packages['']) {
-    lock.packages[''].version = newVersion;
+  if (lock.packages) {
+    if (lock.packages['']) {
+      lock.packages[''].version = newVersion;
+    }
+    if (lock.packages['create-pw-core']) {
+      lock.packages['create-pw-core'].version = newVersion;
+    }
+    if (lock.packages['examples']) {
+      lock.packages['examples'].version = newVersion;
+    }
   }
   fs.writeFileSync(lockPath, JSON.stringify(lock, null, 2) + '\n', 'utf8');
 }
@@ -69,11 +77,29 @@ if (fs.existsSync(createLockPath)) {
   console.log(`Updated create-pw-core/package-lock.json version to ${newVersion}`);
 }
 
+// 4.2 Write examples/package.json
+const examplesPkgPath = path.join(__dirname, '..', 'examples', 'package.json');
+if (fs.existsSync(examplesPkgPath)) {
+  const examplesPkg = JSON.parse(fs.readFileSync(examplesPkgPath, 'utf8'));
+  examplesPkg.version = newVersion;
+  fs.writeFileSync(examplesPkgPath, JSON.stringify(examplesPkg, null, 2) + '\n', 'utf8');
+  console.log(`Updated examples/package.json version to ${newVersion}`);
+}
+
+// 4.3 Update fallback in src/cli.ts
+const cliPath = path.join(__dirname, '..', 'src', 'cli.ts');
+if (fs.existsSync(cliPath)) {
+  let cliContent = fs.readFileSync(cliPath, 'utf8');
+  cliContent = cliContent.replace(/pw-core v\d+\.\d+\.\d+/, `pw-core v${newVersion}`);
+  fs.writeFileSync(cliPath, cliContent, 'utf8');
+  console.log(`Updated fallback version in src/cli.ts to v${newVersion}`);
+}
 
 // 5. Handle release markdown file renaming
 const releasesDir = path.join(__dirname, '..', 'releases');
 const oldReleaseFile = path.join(releasesDir, `v${oldVersion}.md`);
 const newReleaseFile = path.join(releasesDir, `v${newVersion}.md`);
+const minorReleaseFile = path.join(releasesDir, `v${major}.${minor}.md`);
 
 if (fs.existsSync(newReleaseFile)) {
   console.log(`Release doc releases/v${newVersion}.md already exists, skipping overwrite.`);
@@ -86,8 +112,12 @@ if (fs.existsSync(newReleaseFile)) {
   docContent = docContent.split(`v${oldVersion}`).join(`v${newVersion}`);
   fs.writeFileSync(newReleaseFile, docContent, 'utf8');
   console.log(`Updated version header inside releases/v${newVersion}.md`);
+} else if (fs.existsSync(minorReleaseFile)) {
+  let docContent = fs.readFileSync(minorReleaseFile, 'utf8');
+  docContent = docContent.replace(/# Release Notes \(v\d+\.\d+\.\d+\)/, `# Release Notes (v${newVersion})`);
+  fs.writeFileSync(minorReleaseFile, docContent, 'utf8');
+  console.log(`Updated version header inside releases/v${major}.${minor}.md to v${newVersion}`);
 } else {
-  // If old release doc doesn't exist, create a new one
   fs.writeFileSync(newReleaseFile, `# pw-core Documentation (v${newVersion})\n\nRelease notes for v${newVersion} go here.`, 'utf8');
   console.log(`Created new release doc: releases/v${newVersion}.md`);
 }

@@ -104,7 +104,7 @@ function printVersion(): void {
       return
     }
   } catch {}
-  console.log('pw-core v1.3.0')
+  console.log('pw-core v1.3.1')
 }
 
 async function main() {
