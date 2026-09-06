@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import * as fs from 'fs'
 import * as path from 'path'
-import { chromium } from '@playwright/test'
+import { chromium, type BrowserContext, type Page } from '@playwright/test'
 
 import {
   findRegistryFile,
@@ -11,156 +11,75 @@ import {
   findElementKey,
   formatActionCall,
   generateSmartLocator,
-  findPlaywrightConfig
+  findPlaywrightConfig,
+  extractNthFromSelector,
+  getBaseUrl,
+  getTestDir,
+  getNextTestIndex,
+  formatRecordingDate,
+  toWorkerKey,
+  processRecordedAction,
+  isOwnPanelSelector,
+  type MatchResult,
+  type RecordedAction,
+  type RegistryRoot
 } from './codegen'
 import { FloatingPanelManager } from './codegen/floating-panel'
 import { HoverTrackerManager } from './codegen/hover-tracker'
-import { normalizeActionName } from './codegen/generator/action.validator'
 
-function extractNthFromSelector(selector: string): {
-  baseSelector: string
-  nth?: number
-} {
-  const nthMatch = selector.match(/\s*>>\s*nth=(\d+)/i)
-  if (nthMatch) {
-    const baseSelector = selector.replace(/\s*>>\s*nth=\d+/i, '').trim()
-    return { baseSelector, nth: parseInt(nthMatch[1], 10) }
-  }
-  if (selector.endsWith(' >> first()')) {
-    const baseSelector = selector.substring(0, selector.length - ' >> first()'.length).trim()
-    return { baseSelector, nth: 0 }
-  }
-  return { baseSelector: selector }
+type RecorderAction = RecordedAction & { selector: string }
+type RecorderActionEvent = { action: RecorderAction }
+type RecorderOptions = { language: string; mode: string; recorderMode: string }
+type RecorderEventSink = {
+  actionAdded(page: Page, data: RecorderActionEvent): Promise<void>
+  actionUpdated(page: Page, data: RecorderActionEvent): Promise<void>
+  signalAdded(page: Page, data: unknown): void
+}
+type RecorderContext = BrowserContext & {
+  _enableRecorder(options: RecorderOptions, eventSink: RecorderEventSink): Promise<void>
 }
 
-function parseDotEnv(cwd: string): Record<string, string> {
-  const env: Record<string, string> = {}
-  const envPath = path.join(cwd, '.env')
-  if (fs.existsSync(envPath)) {
-    try {
-      const content = fs.readFileSync(envPath, 'utf8')
-      const lines = content.split(/\r?\n/)
-      for (const line of lines) {
-        const trimmed = line.trim()
-        if (!trimmed || trimmed.startsWith('#')) continue
-        const index = trimmed.indexOf('=')
-        if (index > 0) {
-          const key = trimmed.slice(0, index).trim()
-          let val = trimmed.slice(index + 1).trim()
-          if ((val.startsWith("'") && val.endsWith("'")) || (val.startsWith('"') && val.endsWith('"'))) {
-            val = val.slice(1, -1)
-          }
-          env[key] = val
-        }
-      }
-    } catch (e) { }
+/**
+ * Adds a newly discovered locator element into the page configuration inside registryObj.
+ */
+function registerNewElementInRegistry(
+  registryObj: RegistryRoot,
+  pageKey: string,
+  elementKey: string,
+  matchResult: MatchResult,
+  fallbackUrl: string
+): void {
+  if (!registryObj[pageKey]) {
+    registryObj[pageKey] = { url: fallbackUrl }
   }
-  return env
-}
-
-function getBaseUrl(cwd: string): string {
-  const env = parseDotEnv(cwd)
-  const envUrl = process.env.URL || env['URL']
-  if (envUrl) {
-    return envUrl
-  }
-
-  let configPath = path.join(cwd, 'playwright.config.ts')
-  if (!fs.existsSync(configPath)) {
-    configPath = path.join(cwd, 'playwright.config.js')
-  }
-
-  if (fs.existsSync(configPath)) {
-    try {
-      const content = fs.readFileSync(configPath, 'utf8')
-      const stringMatch = content.match(/baseURL:\s*['"`](.*?)['"`]/)
-      if (stringMatch && stringMatch[1]) {
-        return stringMatch[1]
-      }
-
-      if (/baseURL:\s*(?:env|ENV)\.url/.test(content)) {
-        let envFilePath = path.join(cwd, 'src', 'utils', 'env.ts')
-        if (!fs.existsSync(envFilePath)) {
-          envFilePath = path.join(cwd, 'src', 'utils', 'env.js')
-        }
-        if (fs.existsSync(envFilePath)) {
-          const envContent = fs.readFileSync(envFilePath, 'utf8')
-          const stringMatches = [...envContent.matchAll(/['"`](https?:\/\/.*?)['"`]/g)]
-          if (stringMatches.length > 0) {
-            return stringMatches[0][1]
-          }
-        }
-      }
-    } catch (e) { }
-  }
-  return ''
-}
-
-function getTestDir(cwd: string): string {
-  let configPath = path.join(cwd, 'playwright.config.ts')
-  if (!fs.existsSync(configPath)) {
-    configPath = path.join(cwd, 'playwright.config.js')
-  }
-
-  if (fs.existsSync(configPath)) {
-    try {
-      const content = fs.readFileSync(configPath, 'utf8')
-      const testDirMatch = content.match(/testDir:\s*['"`](.*?)['"`]/)
-      if (testDirMatch && testDirMatch[1]) {
-        return path.resolve(cwd, testDirMatch[1])
-      }
-    } catch (e) { }
-  }
-
-  return cwd
-}
-
-function getNextTestIndex(testDir: string): number {
-  if (!fs.existsSync(testDir)) return 1
-  try {
-    const files = fs.readdirSync(testDir)
-    let max = 0
-    for (const file of files) {
-      const match = file.match(/^(\d+)\.recorded\.test\.(ts|js)$/)
-      if (match) {
-        const num = parseInt(match[1], 10)
-        if (num > max) {
-          max = num
-        }
-      }
+  const pageConfig = registryObj[pageKey]!
+  if (matchResult.type === 'testId') {
+    if (pageConfig.testIds) {
+      pageConfig.testIds[elementKey] = matchResult.val
+    } else {
+      if (!pageConfig.testId) pageConfig.testId = {}
+      pageConfig.testId[elementKey] = matchResult.val
     }
-    return max + 1
-  } catch (e) {
-    return 1
+  } else if (matchResult.type === 'selector') {
+    if (pageConfig.selectors) {
+      pageConfig.selectors[elementKey] = matchResult.val
+    } else {
+      if (!pageConfig.selector) pageConfig.selector = {}
+      pageConfig.selector[elementKey] = matchResult.val
+    }
+  } else {
+    const list = pageConfig[matchResult.type]
+    if (Array.isArray(list)) {
+      if (!list.includes(matchResult.val)) {
+        list.push(matchResult.val)
+      }
+    } else {
+      pageConfig[matchResult.type] = [matchResult.val]
+    }
   }
-}
-
-function formatRecordingDate(date: Date): string {
-  const day = date.getDate()
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-  const month = months[date.getMonth()]
-  const year = date.getFullYear()
-
-  let hours = date.getHours()
-  const minutes = String(date.getMinutes()).padStart(2, '0')
-  const seconds = String(date.getSeconds()).padStart(2, '0')
-  const ampm = hours >= 12 ? 'PM' : 'AM'
-  hours = hours % 12
-  hours = hours ? hours : 12
-
-  return `${day} ${month} ${year}, ${hours}:${minutes}:${seconds} ${ampm}`
-}
-
-function toWorkerKey(key: string): string {
-  if (key.startsWith('worker')) return key
-  return `worker${key.charAt(0).toUpperCase()}${key.slice(1)}`
 }
 
 async function main() {
-  console.log('RESOLVED @playwright/test:', require.resolve('@playwright/test'))
-  try {
-    console.log('RESOLVED playwright-core:', require.resolve('playwright-core'))
-  } catch (e) { }
   const args = process.argv.slice(2).filter((arg) => arg !== 'codegen')
   let url = ''
   let output = ''
@@ -220,12 +139,12 @@ export const registry = createPageRegistry({
     }
   }
 
-  let registryObj = parseRegistry(registryFilePath)
+  const registryObj = parseRegistry(registryFilePath)
 
   const testDir = path.join(getTestDir(process.cwd()), 'codegen')
   fs.mkdirSync(testDir, { recursive: true })
   let currentTestIndex = getNextTestIndex(testDir)
-  let activeOutput = output || `${currentTestIndex}.recorded.test.ts`
+  const activeOutput = output || `${currentTestIndex}.recorded.test.ts`
   let outputFilePath = path.resolve(testDir, activeOutput)
   console.log(`Live spec output will be written to: ${outputFilePath}`)
 
@@ -239,6 +158,36 @@ export const registry = createPageRegistry({
   const recordedSteps: { pageKey: string; code: string }[] = []
   const usedPageKeys = new Set<string>()
 
+  const actionQueue: (() => Promise<void>)[] = []
+  let processing = false
+
+  const waitForActionQueue = async (intervalMs: number): Promise<void> => {
+    while (actionQueue.length > 0 || processing) {
+      await new Promise((resolve) => setTimeout(resolve, intervalMs))
+    }
+  }
+
+  const enqueueAction = (task: () => Promise<void>) => {
+    actionQueue.push(task)
+    processQueue()
+  }
+
+  const processQueue = async () => {
+    if (processing) return
+    processing = true
+    while (actionQueue.length > 0) {
+      const task = actionQueue.shift()
+      if (task) {
+        try {
+          await task()
+        } catch (err) {
+          console.error('Error processing action queue task:', err)
+        }
+      }
+    }
+    processing = false
+  }
+
   const panelManager = new FloatingPanelManager(context, {
     getDisplayTestIndex: () => {
       if (isSerialSuite) {
@@ -251,21 +200,15 @@ export const registry = createPageRegistry({
     },
     hasSteps: () => recordedSteps.length > 0,
     onStartNewTest: async () => {
-      console.log('DEBUG [cli]: onStartNewTest callback triggered on CLI host')
-      // Wait for any pending page actions to be fully processed first so we don't lose the click that triggered the navigation/action
-      while (actionQueue.length > 0 || processing) {
-        await new Promise((resolve) => setTimeout(resolve, 20))
-      }
+      await waitForActionQueue(20)
 
       const keyReplacements = writeRegistry(registryFilePath, registryObj, overrideMode, usedPageKeys)
       applyReplacements(keyReplacements)
       updateSpecFile()
 
-      // Reset serial state for new test file
       isSerialSuite = false
       testsInCurrentFile.length = 0
 
-      // 2. Increment test index and update outputFilePath
       currentTestIndex++
       testStartedAt = new Date()
       const extension = path.extname(output || '1.recorded.test.ts') || '.ts'
@@ -277,24 +220,16 @@ export const registry = createPageRegistry({
       outputFilePath = path.resolve(testDir, newOutputName)
       console.log(`\n>>> STARTING NEW TEST: ${outputFilePath} <<<\n`)
 
-      // 3. Clear steps and usedPageKeys for the new test session
       recordedSteps.length = 0
       usedPageKeys.clear()
 
-      // 4. Re-inject panel on all open pages with the updated index
       await panelManager.injectAll()
     },
     onStartNewSerialTest: async () => {
-      console.log('DEBUG [cli]: onStartNewSerialTest callback triggered on CLI host')
-      // Wait for any pending page actions to be fully processed first so we don't lose the click that triggered the navigation/action
-      while (actionQueue.length > 0 || processing) {
-        await new Promise((resolve) => setTimeout(resolve, 20))
-      }
+      await waitForActionQueue(20)
 
-      console.log(`DEBUG [cli]: __pwCoreStartNewSerialTest triggered. currentTestIndex=${currentTestIndex}, testsCount=${testsInCurrentFile.length}, activeSteps=${recordedSteps.length}`)
       isSerialSuite = true
 
-      // Save current steps as a test case
       const testName = `${currentTestIndex}.${testsInCurrentFile.length + 1}. Recorded Test`
       testsInCurrentFile.push({
         name: testName,
@@ -302,14 +237,10 @@ export const registry = createPageRegistry({
         usedKeys: new Set(usedPageKeys)
       })
 
-      // Clear active steps and usedPageKeys for the next serial test
       recordedSteps.length = 0
       usedPageKeys.clear()
 
-      // Write the current state to the file
       updateSpecFile()
-
-      // Re-inject/update panel on all open pages
       await panelManager.injectAll()
     }
   })
@@ -329,16 +260,15 @@ export const registry = createPageRegistry({
     if (isSerialSuite) {
       const cases: string[] = []
 
-      // Add previously completed test cases
       for (const tc of testsInCurrentFile) {
         if (tc.steps.length === 0) continue
         const pageListStr = Array.from(tc.usedKeys).map(toWorkerKey).join(', ')
-        const tcSteps = tc.steps.map(s => {
+        const tcSteps = tc.steps.map((s) => {
           let code = s.code
           for (const pk of Array.from(tc.usedKeys)) {
             code = code.replace(new RegExp(`\\b${pk}\\.`, 'g'), `${toWorkerKey(pk)}.`)
           }
-          return code.split('\n').map(line => '    ' + line.trim()).join('\n')
+          return code.split('\n').map((line) => '    ' + line.trim()).join('\n')
         }).join('\n')
         
         cases.push(`  scenario('${tc.name}', async ({ ${pageListStr || 'workerPage'} }) => {
@@ -346,16 +276,15 @@ ${tcSteps}
   });`)
       }
 
-      // Add the currently recording test case
       if (recordedSteps.length > 0) {
         const currentName = `${currentTestIndex}.${testsInCurrentFile.length + 1}. Recorded Test`
         const pageListStr = Array.from(usedPageKeys).map(toWorkerKey).join(', ')
-        const currentSteps = recordedSteps.map(s => {
+        const currentSteps = recordedSteps.map((s) => {
           let code = s.code
           for (const pk of Array.from(usedPageKeys)) {
             code = code.replace(new RegExp(`\\b${pk}\\.`, 'g'), `${toWorkerKey(pk)}.`)
           }
-          return code.split('\n').map(line => '    ' + line.trim()).join('\n')
+          return code.split('\n').map((line) => '    ' + line.trim()).join('\n')
         }).join('\n')
 
         cases.push(`  scenario('${currentName}', async ({ ${pageListStr || 'workerPage'} }) => {
@@ -398,148 +327,32 @@ ${recordedSteps.map((s) => s.code).join('\n')}
   }
 
   const finalize = async () => {
-    while (actionQueue.length > 0 || processing) {
-      await new Promise((resolve) => setTimeout(resolve, 50))
-    }
+    await waitForActionQueue(50)
     const keyReplacements = writeRegistry(registryFilePath, registryObj, overrideMode, usedPageKeys)
     applyReplacements(keyReplacements)
     updateSpecFile()
   }
 
-  // Initialize spec file immediately
   updateSpecFile()
 
   let lastActionSignature = ''
   let lastActionTime = 0
 
-  const actionQueue: (() => Promise<void>)[] = []
-  let processing = false
-  const enqueueAction = (task: () => Promise<void>) => {
-    actionQueue.push(task)
-    processQueue()
-  }
-  const processQueue = async () => {
-    if (processing) return
-    processing = true
-    while (actionQueue.length > 0) {
-      const task = actionQueue.shift()
-      if (task) {
-        try {
-          await task()
-        } catch (err) {
-          console.error('Error processing action queue task:', err)
-        }
-      }
-    }
-    processing = false
-  }
-
-  // Track the current page URL and title as the user navigates.
-  // data.frame.url / data.frame.title are always undefined in this Playwright build,
-  // so we maintain our own state that is kept up-to-date via page navigation events.
   let currentUrl = url || ''
   let currentTitle = ''
 
   const eventSink = {
-    actionAdded: async (page: any, data: any, code: any) => {
+    actionAdded: async (page: Page, data: RecorderActionEvent) => {
       enqueueAction(async () => {
-        const action = data.action
-        action.name = await normalizeActionName(page, action.selector, action.name)
-        console.log('DEBUG [cli]: eventSink.actionAdded called for action:', action.name, 'selector:', action.selector)
-        if (action.name === 'openPage' || action.name === 'closePage') return
-        if (action.selector) {
-          const lowerSel = action.selector.toLowerCase()
-          if (
-            lowerSel.includes('pw-core') ||
-            lowerSel.includes('pwcore') ||
-            lowerSel.includes('new test') ||
-            lowerSel.includes('add serial') ||
-            lowerSel.includes('new-serial') ||
-            lowerSel.includes('new-test')
-          ) {
-            console.log(`DEBUG [cli]: Ignoring own panel action (string match) in actionAdded: selector="${action.selector}"`)
-            return
-          }
-          try {
-            const isOurPanel = await page.locator(action.selector).evaluate((el: any) => {
-              return el.id === 'pw-core-codegen-panel' || el.closest('#pw-core-codegen-panel') !== null
-            }, null, { timeout: 500 }).catch(() => false)
-            if (isOurPanel) {
-              console.log(`DEBUG [cli]: Ignoring own panel action in actionAdded: selector="${action.selector}"`)
-              return
-            }
-          } catch (e) {}
-        }
+        const processed = await processRecordedAction(page, data.action, currentUrl, currentTitle, registryObj, overrideMode)
+        if (!processed) return
 
-        let pageKey = findPageKey(currentUrl, currentTitle, registryObj, overrideMode)
-        console.log(`DEBUG [cli]: url="${currentUrl}" title="${currentTitle}" → pageKey="${pageKey}"`)
-        if (!registryObj[pageKey]) {
-          let effectiveUrl = '/'
-          try {
-            const u = new URL(currentUrl)
-            const hash = u.hash && u.hash.startsWith('#/') ? u.hash.slice(1) : ''
-            const targetUrl = (hash && hash !== '/') ? hash : u.pathname
-            // Strip any nested query params or nested hash IDs from targetUrl
-            const clean = targetUrl.split('?')[0].split('#')[0]
-            effectiveUrl = clean.startsWith('/') ? clean : '/' + clean
-          } catch (e) { }
-          registryObj[pageKey] = { url: effectiveUrl }
-        }
-        let elementKey = 'element'
-        let actionNth: number | undefined = undefined
-        let matchResult: any = null
-
-        if (action.selector) {
-          let selectorToUse = action.selector
-          const smartLocator = await generateSmartLocator(page, action.selector)
-          if (smartLocator) {
-            console.log(
-              `DEBUG [cli]: smart locator: ${smartLocator.locator} (strategy: ${smartLocator.strategy}, base: ${smartLocator.baseScore}, semantic: ${smartLocator.semanticScore}, context: ${smartLocator.contextScore}, total: ${smartLocator.totalScore})`
-            )
-            if (smartLocator.nearbyText) console.log(`DEBUG [cli]:   nearbyText: "${smartLocator.nearbyText}"`)
-            if (smartLocator.accessibleName)
-              console.log(`DEBUG [cli]:   accessibleName: "${smartLocator.accessibleName}"`)
-            if (smartLocator.generatedKey) console.log(`DEBUG [cli]:   generatedKey: "${smartLocator.generatedKey}"`)
-            selectorToUse = smartLocator.selector
-          }
-
-          const parsed = extractNthFromSelector(selectorToUse)
-          selectorToUse = parsed.baseSelector
-          actionNth = parsed.nth
-          if (actionNth !== undefined) {
-            action.nth = actionNth
-          }
-
-          matchResult = findElementKey(selectorToUse, pageKey, registryObj, overrideMode, {
-            targetTestId: (smartLocator as any)?.targetTestId,
-            targetId: (smartLocator as any)?.targetId,
-            targetParentId: (smartLocator as any)?.targetParentId,
-            overrideType: (action.name === 'check' || action.name === 'uncheck') ? 'checkbox' : undefined
-          })
-          pageKey = matchResult.pageKey
-          elementKey = matchResult.elementKey
-
-          // Use context-aware generatedKey if it produced a better name and the match is new
-          // Only for key-based strategies (testId/selector); array strategies must keep original text
-          if (matchResult.isNew && (matchResult.type === 'testId' || matchResult.type === 'selector') && smartLocator?.generatedKey && smartLocator.generatedKey.length > 2) {
-            const proposedKey = smartLocator.generatedKey
-            const existingKeys = new Set([
-              ...Object.keys(registryObj[pageKey]?.testId || {}),
-              ...Object.keys(registryObj[pageKey]?.testIds || {}),
-              ...Object.keys(registryObj[pageKey]?.selector || {}),
-              ...Object.keys(registryObj[pageKey]?.selectors || {})
-            ])
-            if (!existingKeys.has(proposedKey)) {
-              elementKey = proposedKey
-            }
-          }
-        }
+        const { pageKey, elementKey, action, matchResult } = processed
 
         const actionSignature = `${pageKey}.${elementKey}.${action.name}.${action.text || action.key || action.value || ''}.${action.nth ?? ''}`
         const now = Date.now()
         const threshold = action.name === 'click' ? 1200 : 500
         if (actionSignature === lastActionSignature && now - lastActionTime < threshold) {
-          console.log(`DEBUG [cli]: Deduplicated consecutive action: ${actionSignature}`)
           return
         }
         lastActionSignature = actionSignature
@@ -547,40 +360,15 @@ ${recordedSteps.map((s) => s.code).join('\n')}
 
         usedPageKeys.add(pageKey)
         const generatedCode = formatActionCall(pageKey, elementKey, action)
-        console.log('DEBUG [cli]: generatedCode:', generatedCode)
         recordedSteps.push({ pageKey, code: generatedCode })
 
         if (matchResult && matchResult.isNew) {
-          if (!registryObj[pageKey]) {
-            let pathname = '/'
-            try {
-              const u = new URL(page.url())
-              pathname = u.pathname
-            } catch (e) { }
-            registryObj[pageKey] = { url: pathname }
-          }
-          if (matchResult.type === 'testId') {
-            if (registryObj[pageKey].testIds) {
-              registryObj[pageKey].testIds[elementKey] = matchResult.val
-            } else {
-              if (!registryObj[pageKey].testId) registryObj[pageKey].testId = {}
-              registryObj[pageKey].testId[elementKey] = matchResult.val
-            }
-          } else if (matchResult.type === 'selector') {
-            if (registryObj[pageKey].selectors) {
-              registryObj[pageKey].selectors[elementKey] = matchResult.val
-            } else {
-              if (!registryObj[pageKey].selector) registryObj[pageKey].selector = {}
-              registryObj[pageKey].selector[elementKey] = matchResult.val
-            }
-          } else {
-            if (!registryObj[pageKey][matchResult.type]) {
-              registryObj[pageKey][matchResult.type] = []
-            }
-            if (!registryObj[pageKey][matchResult.type].includes(matchResult.val)) {
-              registryObj[pageKey][matchResult.type].push(matchResult.val)
-            }
-          }
+          let pathname = '/'
+          try {
+            const u = new URL(page.url())
+            pathname = u.pathname
+          } catch { }
+          registerNewElementInRegistry(registryObj, pageKey, elementKey, matchResult, pathname)
           const keyReplacements = writeRegistry(registryFilePath, registryObj, overrideMode, usedPageKeys)
           applyReplacements(keyReplacements)
         }
@@ -589,84 +377,15 @@ ${recordedSteps.map((s) => s.code).join('\n')}
         await panelManager.injectAll()
       })
     },
-    actionUpdated: async (page: any, data: any, code: any) => {
+    actionUpdated: async (page: Page, data: RecorderActionEvent) => {
       enqueueAction(async () => {
-        const action = data.action
-        action.name = await normalizeActionName(page, action.selector, action.name)
-        console.log(
-          'DEBUG [cli]: eventSink.actionUpdated called for action:',
-          action.name,
-          'selector:',
-          action.selector
-        )
-        if (action.name === 'openPage' || action.name === 'closePage') return
-        if (action.selector) {
-          const lowerSel = action.selector.toLowerCase()
-          if (
-            lowerSel.includes('pw-core') ||
-            lowerSel.includes('pwcore') ||
-            lowerSel.includes('new test') ||
-            lowerSel.includes('add serial') ||
-            lowerSel.includes('new-serial') ||
-            lowerSel.includes('new-test')
-          ) {
-            console.log(`DEBUG [cli]: Ignoring own panel action (string match) in actionUpdated: selector="${action.selector}"`)
-            return
-          }
-          try {
-            const isOurPanel = await page.locator(action.selector).evaluate((el: any) => {
-              return el.id === 'pw-core-codegen-panel' || el.closest('#pw-core-codegen-panel') !== null
-            }, null, { timeout: 500 }).catch(() => false)
-            if (isOurPanel) {
-              console.log(`DEBUG [cli]: Ignoring own panel action in actionUpdated: selector="${action.selector}"`)
-              return
-            }
-          } catch (e) {}
-        }
+        const processed = await processRecordedAction(page, data.action, currentUrl, currentTitle, registryObj, overrideMode)
+        if (!processed) return
 
-        let pageKey = findPageKey(currentUrl, currentTitle, registryObj, overrideMode)
-        if (!registryObj[pageKey]) {
-          let effectiveUrl = '/'
-          try {
-            const u = new URL(currentUrl)
-            const hash = u.hash && u.hash.startsWith('#/') ? u.hash.slice(1) : ''
-            const targetUrl = (hash && hash !== '/') ? hash : u.pathname
-            // Strip any nested query params or nested hash IDs from targetUrl
-            const clean = targetUrl.split('?')[0].split('#')[0]
-            effectiveUrl = clean.startsWith('/') ? clean : '/' + clean
-          } catch (e) { }
-          registryObj[pageKey] = { url: effectiveUrl }
-        }
-        let elementKey = 'element'
-        let actionNth: number | undefined = undefined
-
-        if (action.selector) {
-          let selectorToUse = action.selector
-          const smartLocator = await generateSmartLocator(page, action.selector)
-          if (smartLocator) {
-            selectorToUse = smartLocator.selector
-          }
-
-          const parsed = extractNthFromSelector(selectorToUse)
-          selectorToUse = parsed.baseSelector
-          actionNth = parsed.nth
-          if (actionNth !== undefined) {
-            action.nth = actionNth
-          }
-
-          const matchResult = findElementKey(selectorToUse, pageKey, registryObj, overrideMode, {
-            targetTestId: (smartLocator as any)?.targetTestId,
-            targetId: (smartLocator as any)?.targetId,
-            targetParentId: (smartLocator as any)?.targetParentId,
-            overrideType: (action.name === 'check' || action.name === 'uncheck') ? 'checkbox' : undefined
-          })
-          pageKey = matchResult.pageKey
-          elementKey = matchResult.elementKey
-        }
+        const { pageKey, elementKey, action } = processed
 
         usedPageKeys.add(pageKey)
         const generatedCode = formatActionCall(pageKey, elementKey, action)
-        console.log('DEBUG [cli]: generatedCode updated:', generatedCode)
 
         lastActionSignature = `${pageKey}.${elementKey}.${action.name}.${action.text || action.key || action.value || ''}.${action.nth ?? ''}`
         lastActionTime = Date.now()
@@ -683,9 +402,7 @@ ${recordedSteps.map((s) => s.code).join('\n')}
         await panelManager.injectAll()
       })
     },
-    signalAdded: (page: any, data: any) => {
-      console.log('DEBUG [cli]: eventSink.signalAdded called')
-    }
+    signalAdded: (_page: Page, _data: unknown) => {}
   }
 
   const hoverTracker = new HoverTrackerManager(context, {
@@ -704,7 +421,7 @@ ${recordedSteps.map((s) => s.code).join('\n')}
         let selectorToUse = smartLocator.selector
         const parsed = extractNthFromSelector(selectorToUse)
         selectorToUse = parsed.baseSelector
-        const hoverAction: any = { name: 'hover' }
+        const hoverAction: RecordedAction = { name: 'hover' }
         if (parsed.nth !== undefined) {
           hoverAction.nth = parsed.nth
         }
@@ -724,40 +441,17 @@ ${recordedSteps.map((s) => s.code).join('\n')}
         lastActionTime = now
 
         usedPageKeys.add(pageKey)
-        console.log('DEBUG [cli]: Hover action recorded:', generatedCode)
         recordedSteps.push({ pageKey, code: generatedCode })
 
         if (matchResult && matchResult.isNew) {
-          if (!registryObj[pageKey]) {
-            let pathname = '/'
-            try {
-              const u = new URL(page.url())
-              pathname = u.pathname
-            } catch (e) { }
-            registryObj[pageKey] = { url: pathname }
+          let pathname = '/'
+          try {
+            const u = new URL(page.url())
+            pathname = u.pathname
+          } catch {
+            // Fall back to '/' if page URL cannot be parsed
           }
-          if (matchResult.type === 'testId') {
-            if (registryObj[pageKey].testIds) {
-              registryObj[pageKey].testIds[elementKey] = matchResult.val
-            } else {
-              if (!registryObj[pageKey].testId) registryObj[pageKey].testId = {}
-              registryObj[pageKey].testId[elementKey] = matchResult.val
-            }
-          } else if (matchResult.type === 'selector') {
-            if (registryObj[pageKey].selectors) {
-              registryObj[pageKey].selectors[elementKey] = matchResult.val
-            } else {
-              if (!registryObj[pageKey].selector) registryObj[pageKey].selector = {}
-              registryObj[pageKey].selector[elementKey] = matchResult.val
-            }
-          } else {
-            if (!registryObj[pageKey][matchResult.type]) {
-              registryObj[pageKey][matchResult.type] = []
-            }
-            if (!registryObj[pageKey][matchResult.type].includes(matchResult.val)) {
-              registryObj[pageKey][matchResult.type].push(matchResult.val)
-            }
-          }
+          registerNewElementInRegistry(registryObj, pageKey, elementKey, matchResult, pathname)
           const keyReplacements = writeRegistry(registryFilePath, registryObj, overrideMode, usedPageKeys)
           applyReplacements(keyReplacements)
         }
@@ -779,12 +473,14 @@ ${recordedSteps.map((s) => s.code).join('\n')}
     process.exit(0)
   })
 
-  // Track page URL and title on every navigation (real, hash, or pushState)
   page.on('framenavigated', async (frame) => {
     if (frame === page.mainFrame()) {
       currentUrl = page.url()
-      try { currentTitle = await page.title() } catch (e) { }
-      console.log(`DEBUG [cli]: navigated → url="${currentUrl}" title="${currentTitle}"`)
+      try {
+        currentTitle = await page.title()
+      } catch {
+        // Ignore title fetch error if page context is actively transitioning
+      }
     }
   })
 
@@ -792,7 +488,10 @@ ${recordedSteps.map((s) => s.code).join('\n')}
     await page.goto(url.startsWith('http') ? url : `http://${url}`)
   }
 
-  await (context as any)._enableRecorder({ language: 'javascript', mode: 'recording', recorderMode: 'api' }, eventSink)
+  await (context as RecorderContext)._enableRecorder(
+    { language: 'javascript', mode: 'recording', recorderMode: 'api' },
+    eventSink
+  )
 
   browser.on('disconnected', async () => {
     console.log('Browser closed. Codegen complete!')

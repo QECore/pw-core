@@ -1,12 +1,5 @@
-import { Locator } from '@playwright/test'
-import type {
-  PageKeys,
-  CheckableLocatorKeys,
-  CheckboxLocatorKeys,
-  EditableLocatorKeys,
-  SelectableLocatorKeys,
-  ModifyOptionsForTarget
-} from '../config'
+import type { Locator } from '@playwright/test'
+import type { ModifyOptionsForTarget, PageKeys } from '../config'
 
 export interface ProxyLocatorMethods<T> {
   /** @see {@link https://playwright.dev/docs/api/class-locator#locator-click Locator.click} */
@@ -40,19 +33,19 @@ export interface ProxyLocatorMethods<T> {
   ): Promise<void>
 
   /** @see {@link https://playwright.dev/docs/api/class-locator#locator-check Locator.check} */
-  check<Target extends CheckableLocatorKeys<T> | Locator>(
+  check<Target extends PageKeys<T> | Locator>(
     target: Target,
     options?: ModifyOptionsForTarget<T, Target, Parameters<Locator['check']>[0]>
   ): Promise<void>
 
   /** @see {@link https://playwright.dev/docs/api/class-locator#locator-uncheck Locator.uncheck} */
-  uncheck<Target extends CheckboxLocatorKeys<T> | Locator>(
+  uncheck<Target extends PageKeys<T> | Locator>(
     target: Target,
     options?: ModifyOptionsForTarget<T, Target, Parameters<Locator['uncheck']>[0]>
   ): Promise<void>
 
   /** @see {@link https://playwright.dev/docs/api/class-locator#locator-clear Locator.clear} */
-  clear<Target extends EditableLocatorKeys<T> | (string & {}) | Locator>(
+  clear<Target extends PageKeys<T> | Locator>(
     target: Target,
     options?: ModifyOptionsForTarget<T, Target, Parameters<Locator['clear']>[0]>
   ): Promise<void>
@@ -64,7 +57,7 @@ export interface ProxyLocatorMethods<T> {
   ): Promise<void>
 
   /** @see {@link https://playwright.dev/docs/api/class-locator#locator-is-checked Locator.isChecked} */
-  isChecked<Target extends CheckableLocatorKeys<T> | Locator>(
+  isChecked<Target extends PageKeys<T> | Locator>(
     target: Target,
     options?: ModifyOptionsForTarget<T, Target, Parameters<Locator['isChecked']>[0]>
   ): Promise<boolean>
@@ -94,19 +87,13 @@ export interface ProxyLocatorMethods<T> {
   ): Promise<string>
 
   /** @see {@link https://playwright.dev/docs/api/class-locator#locator-all-inner-texts Locator.allInnerTexts} */
-  allInnerTexts<Target extends PageKeys<T> | Locator>(
-    target: Target
-  ): Promise<string[]>
+  allInnerTexts<Target extends PageKeys<T> | Locator>(target: Target): Promise<string[]>
 
   /** @see {@link https://playwright.dev/docs/api/class-locator#locator-all-text-contents Locator.allTextContents} */
-  allTextContents<Target extends PageKeys<T> | Locator>(
-    target: Target
-  ): Promise<string[]>
+  allTextContents<Target extends PageKeys<T> | Locator>(target: Target): Promise<string[]>
 
   /** @see {@link https://playwright.dev/docs/api/class-locator#locator-count Locator.count} */
-  count<Target extends PageKeys<T> | Locator>(
-    target: Target
-  ): Promise<number>
+  count<Target extends PageKeys<T> | Locator>(target: Target): Promise<number>
 
   /** @see {@link https://playwright.dev/docs/api/class-locator#locator-scroll-into-view-if-needed Locator.scrollIntoViewIfNeeded} */
   scrollIntoViewIfNeeded<Target extends PageKeys<T> | Locator>(
@@ -120,21 +107,21 @@ export interface ProxyLocatorMethods<T> {
   ): Promise<{ x: number; y: number; width: number; height: number } | null>
 
   /** @see {@link https://playwright.dev/docs/api/class-locator#locator-press Locator.press} */
-  press<Target extends EditableLocatorKeys<T> | (string & {}) | Locator>(
+  press<Target extends PageKeys<T> | Locator>(
     target: Target,
     key: string,
     options?: ModifyOptionsForTarget<T, Target, Parameters<Locator['press']>[1]>
   ): Promise<void>
 
   /** @see {@link https://playwright.dev/docs/api/class-locator#locator-press-sequentially Locator.pressSequentially} */
-  pressSequentially<Target extends EditableLocatorKeys<T> | (string & {}) | Locator>(
+  pressSequentially<Target extends PageKeys<T> | Locator>(
     target: Target,
     value: string,
     options?: ModifyOptionsForTarget<T, Target, Parameters<Locator['pressSequentially']>[1]>
   ): Promise<void>
 
   /** @see {@link https://playwright.dev/docs/api/class-locator#locator-select-option Locator.selectOption} */
-  selectOption<Target extends SelectableLocatorKeys<T> | (string & {}) | Locator>(
+  selectOption<Target extends PageKeys<T> | Locator>(
     target: Target,
     values: string | string[] | { value?: string; label?: string; index?: number } | null,
     options?: ModifyOptionsForTarget<T, Target, Parameters<Locator['selectOption']>[1]>
@@ -143,7 +130,7 @@ export interface ProxyLocatorMethods<T> {
   /** @see {@link https://playwright.dev/docs/api/class-locator#locator-set-input-files Locator.setInputFiles} */
   setInputFiles<Target extends PageKeys<T> | Locator>(
     target: Target,
-    files: string | string[] | { name: string; mimeType: string; buffer: Buffer } | { name: string; mimeType: string; buffer: Buffer }[],
+    files: Parameters<Locator['setInputFiles']>[0],
     options?: ModifyOptionsForTarget<T, Target, Parameters<Locator['setInputFiles']>[1]>
   ): Promise<void>
 
@@ -155,7 +142,7 @@ export interface ProxyLocatorMethods<T> {
   ): Promise<string | null>
 
   /** @see {@link https://playwright.dev/docs/api/class-locator#locator-fill Locator.fill} */
-  fill<Target extends EditableLocatorKeys<T> | (string & {}) | Locator>(
+  fill<Target extends PageKeys<T> | Locator>(
     target: Target,
     value: string,
     options?: ModifyOptionsForTarget<T, Target, Parameters<Locator['fill']>[1]> & {

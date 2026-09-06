@@ -41,6 +41,7 @@ export type DynamicSelectorEntry = {
 }
 
 export type DynamicLocatorEntry = DynamicTestIdEntry | DynamicSelectorEntry
+type PlaceholderValues = Record<string, string | readonly string[] | undefined>
 
 /** Returns true when `key` contains at least one `{…}` placeholder. */
 export function isDynamicKey(key: string): boolean {
@@ -80,6 +81,29 @@ function extractPlaceholders(pattern: string): string[] {
   return names
 }
 
+function getPlaceholderValues(entry: DynamicLocatorEntry): PlaceholderValues {
+  const placeholders: PlaceholderValues = {}
+  for (const [key, value] of Object.entries(entry)) {
+    if (key !== 'testId' && key !== 'selector') {
+      placeholders[key] = value
+    }
+  }
+  return placeholders
+}
+
+function collectPlaceholderArrays(
+  placeholders: PlaceholderValues,
+  names: readonly string[]
+): readonly (readonly string[])[] {
+  return names.map((name) => {
+    const value = placeholders[name]
+    if (!Array.isArray(value)) {
+      throw new Error(`Dynamic locator placeholder "${name}" must be an array.`)
+    }
+    return value as readonly string[]
+  })
+}
+
 /**
  * Expand a single dynamic key pattern + entry into flat key → locator-value pairs.
  * Validates the entry at runtime before expansion.
@@ -88,16 +112,14 @@ function extractPlaceholders(pattern: string): string[] {
 function expandSingleDynamic(pattern: string, entry: DynamicLocatorEntry): Record<string, string> {
   const testIdPattern = entry.testId
   const selectorPattern = entry.selector
-  const targetPattern = (testIdPattern !== undefined ? testIdPattern : selectorPattern) as string
-  const targetKey = testIdPattern !== undefined ? 'testId' : 'selector'
+  const targetPattern = (testIdPattern ?? selectorPattern) as string | undefined
 
   if (targetPattern === undefined) {
     throw new Error(`Dynamic locator "${pattern}": entry must contain either 'testId' or 'selector' property.`)
   }
 
-  const placeholders = { ...entry } as any
-  delete placeholders.testId
-  delete placeholders.selector
+  const targetKey = testIdPattern !== undefined ? 'testId' : 'selector'
+  const placeholders = getPlaceholderValues(entry)
 
   // ─── Validation ──────────────────────────────────────────────────────
   const expectedNames = extractPlaceholders(pattern)
@@ -147,10 +169,7 @@ function expandSingleDynamic(pattern: string, entry: DynamicLocatorEntry): Recor
 
   // Sort placeholder names longest-first to avoid substring replacement issues
   const names = Object.keys(placeholders).sort((a, b) => b.length - a.length)
-  const values = names.map((name) => {
-    const v = placeholders[name]
-    return v as string[]
-  })
+  const values = collectPlaceholderArrays(placeholders, names)
 
   const result: Record<string, string> = {}
 

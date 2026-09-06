@@ -19,24 +19,22 @@ export class FloatingPanelManager {
     })
 
     await this.context.exposeFunction('__pwCoreStartNewTest', () => {
-      console.log('DEBUG [cli]: __pwCoreStartNewTest exposed function called in browser context')
       return this.options.onStartNewTest()
     })
 
     await this.context.exposeFunction('__pwCoreStartNewSerialTest', () => {
-      console.log('DEBUG [cli]: __pwCoreStartNewSerialTest exposed function called in browser context')
       return this.options.onStartNewSerialTest()
     })
 
     // 2. Listen for page events to automatically inject the panel
     this.context.on('page', (p: Page) => {
-      p.on('load', () => this.inject(p).catch(() => {}))
-      p.on('domcontentloaded', () => this.inject(p).catch(() => {}))
+      p.on('load', () => this.inject(p))
+      p.on('domcontentloaded', () => this.inject(p))
       p.on('framenavigated', (frame) => {
         if (frame === p.mainFrame()) {
           // Wait briefly for SPA framework to mount before injecting/updating
           setTimeout(() => {
-            this.inject(p).catch(() => {})
+            this.inject(p)
           }, 200)
         }
       })
@@ -64,29 +62,16 @@ export class FloatingPanelManager {
 
       const htmlContent = getFloatingPanelHtml(idx, fileName, newTestTitle, newSerialTitle, disabledAttr)
 
-      const fnStr = clientInjectFloatingPanel.toString()
-
-      // Evaluate the client injection function in the page context
-      await page
-        .evaluate(
-          ({ idx, fileName, hasSteps, cssStyle, htmlContent, fnStr }) => {
-            const fn = new Function(`return ${fnStr}`)()
-            fn(idx, fileName, hasSteps, cssStyle, htmlContent)
-          },
-          {
-            idx,
-            fileName,
-            hasSteps,
-            cssStyle: FLOATING_PANEL_STYLE,
-            htmlContent,
-            fnStr
-          }
-        )
-        .catch((err: any) => {
-          console.error(`DEBUG [cli]: Failed to inject/update floating panel on page ${page.url()}:`, err)
-        })
-    } catch (err: any) {
-      console.error(`DEBUG [cli]: Exception in injectFloatingPanel wrapper:`, err)
+      // Evaluate the client injection function directly in the page context via Playwright
+      await page.evaluate(clientInjectFloatingPanel, {
+        idx,
+        fileName,
+        hasSteps,
+        cssStyle: FLOATING_PANEL_STYLE,
+        htmlContent
+      })
+    } catch {
+      // Non-fatal: ignore injection failure on navigation frames and allow recording to proceed
     }
   }
 
@@ -95,7 +80,7 @@ export class FloatingPanelManager {
    */
   public async injectAll(): Promise<void> {
     for (const p of this.context.pages()) {
-      await this.inject(p).catch(() => {})
+      await this.inject(p)
     }
   }
 }

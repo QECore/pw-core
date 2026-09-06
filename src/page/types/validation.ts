@@ -23,7 +23,7 @@ export type HasDuplicatePlaceholders<
  * Returns the subset of `Placeholders` whose names are NOT found as
  * substrings of `TestId`. Evaluates to `never` when all are present.
  */
-export type MissingInTestId<TestId extends string, Placeholders extends string> = Placeholders extends any
+export type MissingInTestId<TestId extends string, Placeholders extends string> = Placeholders extends unknown
   ? TestId extends `${string}${Placeholders}${string}`
     ? never
     : Placeholders

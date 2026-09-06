@@ -1,7 +1,9 @@
 import { Page, Locator, test } from '@playwright/test'
 import {
   ChainedKeys,
+  PageConfig,
   PageKeys,
+  StrategyType,
   zeroArgMethodsList,
   oneArgMethodsList,
   strategyList,
@@ -11,7 +13,12 @@ import { formatStepDescription, formatTarget } from '../utils/formatter'
 import { getExpandedTestIds } from './dynamic-locator-resolver'
 import { getCallerLocation } from '../utils/caller-location'
 
-export const locatorStrategies: Record<string, { resolver: string; role?: string }> = {
+export interface LocatorStrategyDefinition {
+  resolver: string
+  role?: string
+}
+
+export const locatorStrategies: Record<string, LocatorStrategyDefinition> = {
   testId: { resolver: 'getByTestId' },
   selector: { resolver: 'locator' },
   text: { resolver: 'getByText' },
@@ -21,19 +28,43 @@ export const locatorStrategies: Record<string, { resolver: string; role?: string
   altText: { resolver: 'getByAltText' }
 }
 
-// Add all roles dynamically
 for (const role of rolesList) {
   locatorStrategies[role] = { resolver: 'getByRole', role }
 }
 
 export interface LocatorMetadata {
-  strategy: string
-  value: any
+  strategy: StrategyType
+  value: string
 }
+
+/** A configured locator key or a raw Playwright locator. */
+export type LocatorTarget = string | Locator
+
+/** Shared internal options understood by locator resolution. */
+export type LocatorResolutionOptions = {
+  nth?: number
+  raw?: boolean
+  hasText?: string | RegExp
+} & Record<string, unknown>
 
 export function cleanKey(s: string): string {
   let clean = s
-  const suffixes = ['Btn', 'Button', 'Link', 'Input', 'Checkbox', 'Option', 'Title', 'Label', 'Value', 'Text', 'Wrapper', 'Container', 'Card', 'Item']
+  const suffixes = [
+    'Btn',
+    'Button',
+    'Link',
+    'Input',
+    'Checkbox',
+    'Option',
+    'Title',
+    'Label',
+    'Value',
+    'Text',
+    'Wrapper',
+    'Container',
+    'Card',
+    'Item'
+  ]
   for (const suffix of suffixes) {
     clean = clean.replace(new RegExp(`[-_]?${suffix}$`, 'i'), '')
   }
@@ -44,11 +75,20 @@ export function cleanKey(s: string): string {
 
 export const lookupIndexCache = new WeakMap<object, Map<string, LocatorMetadata>>()
 
-export function buildLookupIndex(config: any): Map<string, LocatorMetadata> {
+function getLookupIndex(config: PageConfig): Map<string, LocatorMetadata> {
+  let index = lookupIndexCache.get(config)
+  if (!index) {
+    index = buildLookupIndex(config)
+    lookupIndexCache.set(config, index)
+  }
+  return index
+}
+
+export function buildLookupIndex(config: PageConfig): Map<string, LocatorMetadata> {
   const index = new Map<string, LocatorMetadata>()
   const seenInStrategies = new Map<string, string[]>()
 
-  const addKey = (key: string, strategy: string, value: any) => {
+  const addKey = (key: string, strategy: StrategyType, value: string) => {
     const cleanedKey = cleanKey(key)
     if (seenInStrategies.has(cleanedKey)) {
       const existing = seenInStrategies.get(cleanedKey)!
@@ -104,12 +144,8 @@ export function buildLookupIndex(config: any): Map<string, LocatorMetadata> {
   return index
 }
 
-export function defineLocators(instance: any, context: Page | Locator, config: any): void {
-  let index = lookupIndexCache.get(config)
-  if (!index) {
-    index = buildLookupIndex(config)
-    lookupIndexCache.set(config, index)
-  }
+export function defineLocators(instance: object, context: Page | Locator, config: PageConfig): void {
+  const index = getLookupIndex(config)
 
   for (const key of index.keys()) {
     Object.defineProperty(instance, key, {
@@ -122,29 +158,83 @@ export function defineLocators(instance: any, context: Page | Locator, config: a
   }
 }
 
-export function resolveLocator(
-  context: Page | Locator,
-  config: any,
-  target: any,
-  options?: { nth?: number; raw?: boolean; hasText?: string | RegExp } & Record<string, any>
+function resolvePlaywrightLocator(
+  ctx: Page | Locator,
+  resolver: string,
+  role: string | undefined,
+  value: string | RegExp,
+  options?: LocatorResolutionOptions
 ): Locator {
-  if (typeof target !== 'string') return target as Locator
-  const targetStr = target as string
-
-  let index = lookupIndexCache.get(config)
-  if (!index) {
-    index = buildLookupIndex(config)
-    lookupIndexCache.set(config, index)
-  }
-
   const toRegex = (val: string): RegExp => {
     const escaped = val.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')
     return new RegExp(escaped.replace(/\s+/g, '\\s+'), 'i')
   }
 
+  if (resolver === 'getByRole') {
+    const val = typeof value === 'string' ? toRegex(value) : value
+    const roleOptions: { name: string | RegExp; [key: string]: unknown } = { name: val }
+    if (options) {
+      const allowedOptions = [
+        'exact',
+        'checked',
+        'disabled',
+        'expanded',
+        'includeHidden',
+        'level',
+        'pressed',
+        'selected'
+      ] as const
+      for (const opt of allowedOptions) {
+        if (opt in options && options[opt] !== undefined) {
+          roleOptions[opt] = options[opt]
+        }
+      }
+    }
+    return ctx.getByRole(role as Parameters<Page['getByRole']>[0], roleOptions)
+  }
+
+  if (resolver === 'locator') {
+    return ctx.locator(value as string)
+  }
+
+  const opt: { exact?: boolean } = {}
+  if (options && 'exact' in options && typeof options.exact === 'boolean') {
+    opt.exact = options.exact
+  }
+  const val = typeof value === 'string' ? toRegex(value) : value
+
+  switch (resolver) {
+    case 'getByTestId':
+      return ctx.getByTestId(val)
+    case 'getByLabel':
+      return ctx.getByLabel(val, opt)
+    case 'getByPlaceholder':
+      return ctx.getByPlaceholder(val, opt)
+    case 'getByAltText':
+      return ctx.getByAltText(val, opt)
+    case 'getByTitle':
+      return ctx.getByTitle(val, opt)
+    case 'getByText':
+      return ctx.getByText(val, opt)
+    default:
+      return typeof val === 'string' ? ctx.locator(val) : ctx.getByText(val, opt)
+  }
+}
+
+export function resolveLocator(
+  context: Page | Locator,
+  config: PageConfig,
+  target: LocatorTarget,
+  options?: LocatorResolutionOptions
+): Locator {
+  if (typeof target !== 'string') return target
+  const targetStr = target
+
+  const index = getLookupIndex(config)
+
   const resolveSingle = (key: string, ctx: Page | Locator): Locator => {
     const cleaned = cleanKey(key)
-    const meta = index!.get(cleaned)
+    const meta = index.get(cleaned)
     if (!meta) {
       throw new Error(`Locator key '${key}' is not defined in page object configuration.`)
     }
@@ -155,29 +245,7 @@ export function resolveLocator(
     }
 
     const { resolver, role } = strategy
-
-    if (resolver === 'getByRole') {
-      const val = typeof meta.value === 'string' ? toRegex(meta.value) : meta.value
-      const roleOptions: any = { name: val }
-      if (options) {
-        const allowedOptions = ['exact', 'checked', 'disabled', 'expanded', 'includeHidden', 'level', 'pressed', 'selected']
-        for (const opt of allowedOptions) {
-          if (opt in options) {
-            roleOptions[opt] = options[opt]
-          }
-        }
-      }
-      return (ctx as any)[resolver](role, roleOptions)
-    } else if (resolver === 'locator') {
-      return (ctx as any)[resolver](meta.value)
-    } else {
-      const opt: any = {}
-      if (options && 'exact' in options) {
-        opt.exact = options.exact
-      }
-      const val = typeof meta.value === 'string' ? toRegex(meta.value) : meta.value
-      return (ctx as any)[resolver](val, opt)
-    }
+    return resolvePlaywrightLocator(ctx, resolver, role, meta.value, options)
   }
 
   let loc: Locator
@@ -213,8 +281,8 @@ export function resolveLocator(
  */
 export function locator(
   context: Page | Locator,
-  config: any,
-  target: any,
+  config: PageConfig,
+  target: LocatorTarget,
   options?: Parameters<Locator['filter']>[0] & { nth?: number }
 ): Locator {
   const resolved = resolveLocator(context, config, target, { raw: true })
@@ -226,53 +294,22 @@ export function locator(
   return wrapLocatorWithProxy(loc)
 }
 
+const ACTION_METHODS = new Set<string>([...zeroArgMethodsList, ...oneArgMethodsList])
+
 export function wrapLocatorWithProxy(loc: Locator): Locator {
-  const actionMethods = [...zeroArgMethodsList, ...oneArgMethodsList]
   return new Proxy(loc, {
     get: (targetLoc, propKey, receiver) => {
       const val = Reflect.get(targetLoc, propKey, receiver)
-      if (typeof val === 'function' && actionMethods.includes(propKey as any)) {
-        return (...args: any[]) => {
-          const stepName = formatStepDescription(propKey as string, targetLoc, args)
-          if (propKey === 'fill') {
-            const options = args[1]
-            let shouldMask = false
-            if (options && typeof options === 'object' && options.mask !== undefined) {
-              shouldMask = options.mask === true
-            } else {
-              const targetStr = formatTarget(targetLoc)
-              const targetStrLower = targetStr.toLowerCase()
-              shouldMask = targetStrLower.includes('pass') || targetStrLower.includes('pw')
-            }
-            if (shouldMask) {
-              return test.step(
-                stepName,
-                async () => {
-                  await targetLoc.focus()
-                  await targetLoc.evaluate((el, val) => {
-                    const inputEl = el as HTMLInputElement | HTMLTextAreaElement
-                    const prototype =
-                      el.tagName === 'TEXTAREA'
-                        ? window.HTMLTextAreaElement.prototype
-                        : window.HTMLInputElement.prototype
-                    const descriptor = Object.getOwnPropertyDescriptor(prototype, 'value')
-                    if (descriptor && descriptor.set) {
-                      descriptor.set.call(inputEl, val)
-                    } else {
-                      inputEl.value = val
-                    }
-                    inputEl.dispatchEvent(new Event('input', { bubbles: true }))
-                    inputEl.dispatchEvent(new Event('change', { bubbles: true }))
-                  }, args[0])
-                },
-                { box: true, location: getCallerLocation() }
-              )
-            }
-          }
-          return test.step(stepName, () => val.apply(targetLoc, args), {
-            box: true,
-            location: getCallerLocation()
-          })
+      if (typeof val === 'function' && typeof propKey === 'string' && ACTION_METHODS.has(propKey)) {
+        return (...args: unknown[]) => {
+          const stepName = formatStepDescription(propKey, targetLoc, args)
+          return test.step(
+            stepName,
+            async () => {
+              return await (targetLoc as unknown as Record<string, (...a: unknown[]) => unknown>)[propKey](...args)
+            },
+            { box: true, location: getCallerLocation() }
+          )
         }
       }
       return val

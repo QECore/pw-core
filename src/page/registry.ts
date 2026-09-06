@@ -1,4 +1,4 @@
-import test, { Page, TestType, Browser } from '@playwright/test'
+import test, { Browser, BrowserContext, Page, TestType } from '@playwright/test'
 import { PageConfig, ValidatePageConfig } from './config'
 import { TypedPage } from './typed-page'
 import { buildLookupIndex } from './locators/resolver'
@@ -9,23 +9,106 @@ export interface PageConstructor<C extends PageConfig> {
   new (page: Page): TypedPage<C>
 }
 
-export type PageRegistryTest<T extends Record<string, PageConfig>, P, W, O = {}> = TestType<
+type RuntimePageClass = new (page: Page) => TypedPage<PageConfig>
+type RuntimePageClasses = Record<string, RuntimePageClass>
+type FixtureUse<T> = (value: T) => Promise<void>
+type PageFixture = (args: { page: Page }, use: FixtureUse<TypedPage<PageConfig>>) => Promise<void>
+type WorkerFixture = [
+  setup: (args: { workerPage: Page }, use: FixtureUse<TypedPage<PageConfig>>) => Promise<void>,
+  options: { scope: 'worker' }
+]
+type WorkerContextFixture = [
+  setup: (args: { browser: Browser }, use: FixtureUse<BrowserContext>) => Promise<void>,
+  options: { scope: 'worker' }
+]
+type WorkerPageFixture = [
+  setup: (args: { workerContext: BrowserContext }, use: FixtureUse<Page>) => Promise<void>,
+  options: { scope: 'worker' }
+]
+type RuntimeFixture = PageFixture | WorkerFixture | WorkerContextFixture | WorkerPageFixture
+type RuntimeFixtures = Record<string, RuntimeFixture>
+
+// Local runtime key transformation helpers for fixture aliases.
+// Intentionally kept local to preserve runtime isolation (page/ does not depend on codegen/).
+function toUnprefixedPageKey(key: string): string {
+  return key.slice(6).charAt(0).toLowerCase() + key.slice(7)
+}
+
+function toWorkerPageKey(key: string): string {
+  return key.startsWith('worker') ? key : `worker${key.charAt(0).toUpperCase()}${key.slice(1)}`
+}
+
+function getPageKeyAliases(key: string): { pageKey: string; workerKey: string } {
+  if (key.startsWith('worker')) {
+    const unprefixed = toUnprefixedPageKey(key)
+    return { pageKey: unprefixed || key, workerKey: key }
+  }
+  return { pageKey: key, workerKey: toWorkerPageKey(key) }
+}
+
+function createPageFixture(PageClass: RuntimePageClass): PageFixture {
+  return async ({ page }, use) => {
+    await use(new PageClass(page))
+  }
+}
+
+function createWorkerFixture(PageClass: RuntimePageClass): WorkerFixture {
+  return [
+    async ({ workerPage }, use) => {
+      await use(new PageClass(workerPage))
+    },
+    { scope: 'worker' }
+  ]
+}
+
+function createRegistryFixtures<T extends Record<string, PageConfig>>(
+  registry: T,
+  classes: RuntimePageClasses
+): RuntimeFixtures {
+  const fixtures: RuntimeFixtures = {
+    workerContext: [
+      async ({ browser }: { browser: Browser }, use: FixtureUse<BrowserContext>) => {
+        const context = await browser.newContext()
+        await use(context)
+        await context.close()
+      },
+      { scope: 'worker' }
+    ],
+    workerPage: [
+      async ({ workerContext }: { workerContext: BrowserContext }, use: FixtureUse<Page>) => {
+        await use(await workerContext.newPage())
+      },
+      { scope: 'worker' }
+    ]
+  }
+
+  for (const key of Object.keys(registry)) {
+    const PageClass = classes[key]
+    const { pageKey, workerKey } = getPageKeyAliases(key)
+    fixtures[pageKey] = createPageFixture(PageClass)
+    fixtures[workerKey] = createWorkerFixture(PageClass)
+  }
+
+  return fixtures
+}
+
+export type PageRegistryTest<T extends Record<string, PageConfig>, P extends {}, W extends {}, O = {}> = TestType<
   P & {
     [K in keyof T]: K extends keyof O
-      ? O[K] extends new (page: Page, ...args: any[]) => infer R
+      ? O[K] extends new (page: Page, ...args: unknown[]) => infer R
         ? R
         : TypedPage<T[K]>
       : TypedPage<T[K]>
   } & {
     [K in keyof T as K extends `worker${infer R}` ? Uncapitalize<R> : never]: K extends keyof O
-      ? O[K] extends new (page: Page, ...args: any[]) => infer R
+      ? O[K] extends new (page: Page, ...args: unknown[]) => infer R
         ? R
         : TypedPage<T[K]>
       : TypedPage<T[K]>
   },
   W & {
     [K in keyof T as K extends `worker${string}` ? K : `worker${Capitalize<K & string>}`]: K extends keyof O
-      ? O[K] extends new (page: Page, ...args: any[]) => infer R
+      ? O[K] extends new (page: Page, ...args: unknown[]) => infer R
         ? R
         : TypedPage<T[K]>
       : TypedPage<T[K]>
@@ -49,118 +132,82 @@ export type PageRegistryTest<T extends Record<string, PageConfig>, P, W, O = {}>
   }
   extend<
     O2 extends Partial<{
-      [K in keyof T]: new (page: Page, ...args: any[]) => any
+      [K in keyof T]: new (page: Page, ...args: unknown[]) => unknown
     }>,
-    B extends TestType<any, any> = typeof test
+    CustomP extends {} = typeof test extends TestType<infer DefaultP, infer _DefaultW> ? DefaultP : {},
+    CustomW extends {} = typeof test extends TestType<infer _DefaultP, infer DefaultW> ? DefaultW : {}
   >(
     overrides: O2,
-    base?: B
-  ): B extends TestType<infer BaseP, infer BaseW> ? PageRegistryTest<T, BaseP, BaseW, O2> : never
+    base?: TestType<CustomP, CustomW>
+  ): PageRegistryTest<T, CustomP, CustomW, O2>
 }
 
-function createPageRegistryWithClasses<T extends Record<string, PageConfig>, B extends TestType<any, any>>(
+// Local interface for attaching runtime dictionaries to Playwright runner
+interface MutableRegistryRunner {
+  extend: (...args: unknown[]) => unknown
+  pages?: RuntimePageClasses
+  classes?: RuntimePageClasses
+}
+
+function createPageRegistryWithClasses<
+  T extends Record<string, PageConfig>,
+  BaseP extends {},
+  BaseW extends {}
+>(
   registry: T,
-  classes: any,
-  base: B
-): B extends TestType<infer BaseP, infer BaseW> ? PageRegistryTest<T, BaseP, BaseW> : never {
-  const fixtures: any = {
-    // Shared worker context and page
-    workerContext: [
-      async ({ browser }: { browser: Browser }, use: (c: any) => Promise<void>) => {
-        const context = await browser.newContext()
-        await use(context)
-        await context.close()
-      },
-      { scope: 'worker' }
-    ],
-
-    workerPage: [
-      async ({ workerContext }: { workerContext: any }, use: (p: Page) => Promise<void>) => {
-        const page = await workerContext.newPage()
-        await use(page)
-      },
-      { scope: 'worker' }
-    ]
-  }
-
-  for (const key of Object.keys(registry)) {
-    // Page fixture for key
-    fixtures[key] = async ({ page }: { page: Page }, use: (r: any) => Promise<void>) => {
-      const PageClass = classes[key]
-      const instance = new PageClass(page)
-      await use(instance)
-    }
-
-    // Page fixture for un-prefixed key (if key starts with worker)
-    if (key.startsWith('worker')) {
-      const unPrefixed = key.slice(6).charAt(0).toLowerCase() + key.slice(7)
-      if (unPrefixed && !fixtures[unPrefixed]) {
-        fixtures[unPrefixed] = async ({ page }: { page: Page }, use: (r: any) => Promise<void>) => {
-          const PageClass = classes[key]
-          const instance = new PageClass(page)
-          await use(instance)
-        }
-      }
-    }
-
-    // Worker fixture for worker-prefixed key
-    const workerKey = key.startsWith('worker') ? key : `worker${key.charAt(0).toUpperCase()}${key.slice(1)}`
-    fixtures[workerKey] = [
-      async ({ workerPage }: { workerPage: Page }, use: (r: any) => Promise<void>) => {
-        const PageClass = classes[key]
-        const instance = new PageClass(workerPage)
-        await use(instance)
-      },
-      { scope: 'worker' }
-    ]
-  }
+  classes: RuntimePageClasses,
+  base: TestType<BaseP, BaseW>
+): PageRegistryTest<T, BaseP, BaseW> {
+  const fixtures = createRegistryFixtures(registry, classes)
 
   // Copy worker and non-worker aliases in pages and classes dictionaries
   const extendedClasses = { ...classes }
   for (const key of Object.keys(classes)) {
-    if (key.startsWith('worker')) {
-      const unPrefixed = key.slice(6).charAt(0).toLowerCase() + key.slice(7)
-      if (unPrefixed && !extendedClasses[unPrefixed]) {
-        extendedClasses[unPrefixed] = classes[key]
-      }
-    } else {
-      const workerKey = `worker${key.charAt(0).toUpperCase()}${key.slice(1)}`
-      if (!extendedClasses[workerKey]) {
-        extendedClasses[workerKey] = classes[key]
-      }
+    const { pageKey, workerKey } = getPageKeyAliases(key)
+    if (!extendedClasses[pageKey]) {
+      extendedClasses[pageKey] = classes[key]
+    }
+    if (!extendedClasses[workerKey]) {
+      extendedClasses[workerKey] = classes[key]
     }
   }
 
-  const testRunner = base.extend(fixtures) as any
-  testRunner.pages = extendedClasses
-  testRunner.classes = extendedClasses
+  // Playwright compatibility boundary: extend test runner with fixtures and attach registry dictionaries
+  const rawRunner = (base as unknown as { extend: (f: unknown) => MutableRegistryRunner }).extend(fixtures)
+  rawRunner.pages = extendedClasses
+  rawRunner.classes = extendedClasses
 
-  const originalExtend = testRunner.extend.bind(testRunner)
-  testRunner.extend = (overrides: any, customBase: any = test) => {
+  const originalExtend = rawRunner.extend.bind(rawRunner)
+  rawRunner.extend = (overrides?: unknown, customBase: unknown = test) => {
     if (!overrides) {
       return originalExtend()
     }
-    const isPlaywrightFixtures = Object.values(overrides).every(
+    const overridesObj = overrides as Record<string, unknown>
+    const isPlaywrightFixtures = Object.values(overridesObj).every(
       (val) => (typeof val === 'function' && !val.toString().startsWith('class')) || Array.isArray(val)
     )
     if (isPlaywrightFixtures) {
-      const runner = originalExtend(overrides)
+      const runner = originalExtend(overrides) as MutableRegistryRunner
       runner.pages = extendedClasses
       runner.classes = extendedClasses
-      runner.extend = testRunner.extend
+      runner.extend = rawRunner.extend
       return runner
     }
 
     const newClasses = { ...classes }
-    for (const key of Object.keys(overrides)) {
-      if (overrides[key]) {
-        newClasses[key] = overrides[key]
+    for (const key of Object.keys(overridesObj)) {
+      if (overridesObj[key]) {
+        newClasses[key] = overridesObj[key] as RuntimePageClass
       }
     }
-    return createPageRegistryWithClasses(registry, newClasses, customBase)
+    return createPageRegistryWithClasses(
+      registry,
+      newClasses,
+      (customBase ?? test) as unknown as TestType<BaseP, BaseW>
+    )
   }
 
-  return testRunner
+  return rawRunner as unknown as PageRegistryTest<T, BaseP, BaseW>
 }
 
 /**
@@ -174,35 +221,35 @@ function createPageRegistryWithClasses<T extends Record<string, PageConfig>, B e
  *
  * // returns the extended test runner directly
  * const test = createPageRegistry({
-    codegenPage: {
-      url: '/',
-      selectors: {
-        '{item}': {
-          item: ['why-pw-core', 'why-not-playwright', 'registry', 'typed-page', 'features'],
-          selector: '[data-parent-id="{item}"]'
-        },
-        copyToClipboardBtn: '.page',
-        dynamicLocators: 'text="Dynamic Locators" >> nth=0',
-        rootrailthumbright: '#rootRailThumbRight',
-        'text{item}': {
-          item: ['Auto Steps', 'Capabilities >> nth=0', 'Secret Masking'],
-          selector: 'text="{item}"'
-        },
-        tshirts: '.title-title',
-        tShirts: 'internal:role=link[name="T-Shirts"s]'
-      },
-      testIds: {
-        qaWorkspaceBtn: 'active-workspace-btn',
-        wsOptionApp: 'ws-option-app'
-      }
-    },
-    blankPage: {
-      url: '/',
-      selectors: {
-        element: '[data-pw-cursor="pointer"]'
-      }
-    }
-  });
+     codegenPage: {
+       url: '/',
+       selectors: {
+         '{item}': {
+           item: ['why-pw-core', 'why-not-playwright', 'registry', 'typed-page', 'features'],
+           selector: '[data-parent-id="{item}"]'
+         },
+         copyToClipboardBtn: '.page',
+         dynamicLocators: 'text="Dynamic Locators" >> nth=0',
+         rootrailthumbright: '#rootRailThumbRight',
+         'text{item}': {
+           item: ['Auto Steps', 'Capabilities >> nth=0', 'Secret Masking'],
+           selector: 'text="{item}"'
+         },
+         tshirts: '.title-title',
+         tShirts: 'internal:role=link[name="T-Shirts"s]'
+       },
+       testIds: {
+         qaWorkspaceBtn: 'active-workspace-btn',
+         wsOptionApp: 'ws-option-app'
+       }
+     },
+     blankPage: {
+       url: '/',
+       selectors: {
+         element: '[data-pw-cursor="pointer"]'
+       }
+     }
+   });
  *
  * // returns page classes only when accessing .pages
  * const pages = createPageRegistry({
@@ -224,7 +271,7 @@ export function createPageRegistry<const T extends Record<string, PageConfig>>(
     ? T
     : { [K in keyof T]: ValidatePageConfig<T[K]> }
 ): typeof test extends TestType<infer P, infer W> ? PageRegistryTest<T, P, W> : never {
-  const classes: any = {}
+  const classes: RuntimePageClasses = {}
   for (const key of Object.keys(registry)) {
     const config = (registry as Record<string, PageConfig>)[key]
     buildLookupIndex(config)
@@ -236,6 +283,9 @@ export function createPageRegistry<const T extends Record<string, PageConfig>>(
       }
   }
 
-  return createPageRegistryWithClasses(registry, classes, test) as any
+  return createPageRegistryWithClasses(
+    registry as Record<string, PageConfig>,
+    classes,
+    test
+  ) as typeof test extends TestType<infer P, infer W> ? PageRegistryTest<T, P, W> : never
 }
-

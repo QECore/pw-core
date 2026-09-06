@@ -5,7 +5,7 @@ import { getCallerLocation } from '../page/utils/caller-location'
  * A custom Array subclass representing a list of table rows.
  * Inherits all standard Array methods while adding type-safe get and getAll capabilities.
  */
-export class TableRows<T extends Record<string, any>> extends Array<T> {
+export class TableRows<T extends object> extends Array<T> {
   constructor(...items: T[]) {
     // Call the base Array constructor
     super(...items)
@@ -20,7 +20,7 @@ export class TableRows<T extends Record<string, any>> extends Array<T> {
    */
   get<K extends keyof T>(key: K): T[K] | undefined
   get<K extends keyof T>(key: K, value: T[K]): T | undefined
-  get(key: any, value?: any): any {
+  get<K extends keyof T>(key: K, value?: T[K]): T[K] | T | undefined {
     if (arguments.length === 1) {
       // Return the value of the key from the first row
       return this[0] ? this[0][key] : undefined
@@ -36,7 +36,7 @@ export class TableRows<T extends Record<string, any>> extends Array<T> {
    */
   getAll<K extends keyof T>(key: K): T[K][]
   getAll<K extends keyof T>(key: K, value: T[K]): T[]
-  getAll(key: any, value?: any): any[] {
+  getAll<K extends keyof T>(key: K, value?: T[K]): T[K][] | T[] {
     if (arguments.length === 1) {
       // Return the values of the key from all rows
       return this.map((row) => row[key])
@@ -46,7 +46,9 @@ export class TableRows<T extends Record<string, any>> extends Array<T> {
   }
 }
 
-export class Table<T extends Record<string, any>> {
+const TABLE_DATA_ROW_SELECTOR = 'tbody tr, tr[data-testid="transaction-row"]'
+
+export class Table<T extends object> {
   constructor(public readonly root: Locator) {}
 
   /**
@@ -75,12 +77,12 @@ export class Table<T extends Record<string, any>> {
       async () => {
         const headers = await this.getHeaders()
         const rowsData = await this.root
-          .locator('tbody tr, tr[data-testid="transaction-row"]')
+          .locator(TABLE_DATA_ROW_SELECTOR)
           .evaluateAll((trs, headers) => {
             return trs.map((tr) => {
               const cells = Array.from(tr.querySelectorAll('td')).map((td) => td.textContent?.trim() || '')
               if (cells.length === 0) return null // Skip header or empty rows
-              const rowData: any = {}
+              const rowData: Record<string, string> = {}
               headers.forEach((header, index) => {
                 if (index < cells.length && header) {
                   rowData[header] = cells[index]
@@ -89,7 +91,7 @@ export class Table<T extends Record<string, any>> {
               return rowData
             })
           }, headers)
-        return rowsData.filter((r): r is any => r !== null) as T[]
+        return rowsData.filter((row): row is Record<string, string> => row !== null) as unknown as T[]
       },
       { box: true, location: getCallerLocation() }
     )
@@ -111,7 +113,7 @@ export class Table<T extends Record<string, any>> {
     return test.step(
       'Get table row count',
       async () => {
-        return await this.root.locator('tbody tr, tr[data-testid="transaction-row"]').evaluateAll((trs) => {
+        return await this.root.locator(TABLE_DATA_ROW_SELECTOR).evaluateAll((trs) => {
           return trs.filter((tr) => tr.querySelectorAll('td').length > 0).length
         })
       },
@@ -133,8 +135,8 @@ export class Table<T extends Record<string, any>> {
         }
 
         return await this.root.evaluate(
-          (tableEl, { rowIndex, columnIndex }) => {
-            const trs = Array.from(tableEl.querySelectorAll('tbody tr, tr[data-testid="transaction-row"]'))
+          (tableEl, { rowIndex, columnIndex, rowSelector }) => {
+            const trs = Array.from(tableEl.querySelectorAll(rowSelector))
             const dataRows = trs.filter((tr) => tr.querySelectorAll('td').length > 0)
             if (rowIndex < 0 || rowIndex >= dataRows.length) {
               throw new Error(`Row index ${rowIndex} is out of bounds (0 to ${dataRows.length - 1})`)
@@ -142,7 +144,7 @@ export class Table<T extends Record<string, any>> {
             const cell = dataRows[rowIndex].querySelectorAll('td')[columnIndex]
             return cell?.textContent?.trim() ?? ''
           },
-          { rowIndex, columnIndex }
+          { rowIndex, columnIndex, rowSelector: TABLE_DATA_ROW_SELECTOR }
         )
       },
       { box: true, location: getCallerLocation() }

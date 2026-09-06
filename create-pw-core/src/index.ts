@@ -4,6 +4,22 @@ import * as path from 'path'
 import { spawn, execSync } from 'child_process'
 import * as readline from 'readline'
 
+type PackageJson = {
+  name?: string
+  version?: string
+  description?: string
+  author?: unknown
+  license?: string
+  scripts?: Record<string, string>
+  dependencies?: Record<string, string>
+  devDependencies?: Record<string, string>
+  [key: string]: unknown
+}
+
+function readPackageJson(filePath: string): PackageJson {
+  return JSON.parse(fs.readFileSync(filePath, 'utf8')) as PackageJson
+}
+
 const rl = readline.createInterface({
   input: process.stdin,
   output: process.stdout
@@ -92,7 +108,7 @@ async function main() {
   let isDevRepo = false
   if (fs.existsSync(devRepoPkgPath)) {
     try {
-      const devRepoPkg = JSON.parse(fs.readFileSync(devRepoPkgPath, 'utf8'))
+      const devRepoPkg = readPackageJson(devRepoPkgPath)
       if (devRepoPkg.name === 'pw-core') {
         isDevRepo = true
       }
@@ -103,7 +119,7 @@ async function main() {
   const pkgJsonPath = path.join(__dirname, '../package.json')
   if (fs.existsSync(pkgJsonPath) && !isDevRepo) {
     try {
-      const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf8'))
+      const pkg = readPackageJson(pkgJsonPath)
       const currentVersion = pkg.version
 
       const latestVersion = execSync('npm view create-pw-core version', {
@@ -145,10 +161,10 @@ async function main() {
     templatePkgPath = path.join(srcDir, 'package.json')
   }
 
-  let templatePkg: any = {}
+  let templatePkg: PackageJson = {}
   if (fs.existsSync(templatePkgPath)) {
     try {
-      templatePkg = JSON.parse(fs.readFileSync(templatePkgPath, 'utf8'))
+      templatePkg = readPackageJson(templatePkgPath)
     } catch (e) {
       console.warn(`Warning: Could not parse template package.json: ${e}`)
     }
@@ -183,7 +199,7 @@ async function main() {
 
   // Update target package.json with dependencies and scripts
   console.log('\nUpdating package.json...')
-  const targetPkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'))
+  const targetPkg = readPackageJson(packageJsonPath)
 
   // Merge description, author, license if target has empty or default ones
   if (!targetPkg.description || targetPkg.description === 'pw-core test suite') {

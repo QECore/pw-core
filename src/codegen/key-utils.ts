@@ -49,9 +49,10 @@ export function toRegistryKey(str: string, options?: { roleSuffix?: string }): s
     })
     .join('')
 
-  // Trim leading digits
+  // Trim leading digits and ensure first char is lowercase
   let result = camel.replace(/^\d+/, '')
   if (!result) return 'element'
+  result = result.charAt(0).toLowerCase() + result.slice(1)
 
   // Append role suffix if requested (e.g. 'Btn' for buttons)
   if (options?.roleSuffix) {
@@ -66,4 +67,30 @@ export function toRegistryKey(str: string, options?: { roleSuffix?: string }): s
   if (result.length > 40) result = result.slice(0, 40)
 
   return result
+}
+
+/**
+ * Formats a worker fixture prefix for page keys.
+ *
+ * @example
+ * toWorkerKey('loginPage') => 'workerLoginPage'
+ * toWorkerKey('workerLoginPage') => 'workerLoginPage'
+ */
+export function toWorkerKey(key: string): string {
+  if (key.startsWith('worker')) return key
+  return `worker${key.charAt(0).toUpperCase()}${key.slice(1)}`
+}
+
+/**
+ * Strips the worker prefix and lowercases the initial character.
+ *
+ * @example
+ * toUnprefixedPageKey('workerLoginPage') => 'loginPage'
+ * toUnprefixedPageKey('loginPage') => 'loginPage'
+ */
+export function toUnprefixedPageKey(key: string): string {
+  if (key.startsWith('worker') && key.length > 6) {
+    return key.slice(6).charAt(0).toLowerCase() + key.slice(7)
+  }
+  return key
 }

@@ -1,11 +1,11 @@
-import { defineConfig } from '@playwright/test';
-import { env } from 'src/utils/env';
+import { defineConfig } from '@playwright/test'
+import { env } from './src/utils/env'
 
 export default defineConfig({
   testDir: './src/tests',
   timeout: 30000,
   expect: {
-    timeout: 5000,
+    timeout: 5000
   },
   reporter: [['html'], ['list']],
   use: {
@@ -18,7 +18,7 @@ export default defineConfig({
   projects: [
     {
       name: 'chrome',
-      use: { browserName: 'chromium' },
+      use: { browserName: 'chromium' }
     }
   ]
-});
+})
